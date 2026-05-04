@@ -141,6 +141,10 @@ docker run --rm \
 
 Adjust **`--root`** to your layout. **`--dry-run`** resolves metadata but does not write XML.
 
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
 ## Tests
 
 ```bash
