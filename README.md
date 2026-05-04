@@ -64,7 +64,15 @@ The main CLI writes submission XML as **`Game - <version> - <dumper> - <YYYY-MM-
 - By default the script walks the directory **that contains the script** (see **`SOURCE_ROOT`** at the top of the file if you symlink or copy the script elsewhere).
 
 ### Run the script
-Then run the main submission script and point **`--root`** at your organized tree (e.g. `Dumps/` as above).
+
+From the repository (venv activated, `no_intro_submit.json` in place):
+
+```bash
+python3 no_intro_batch_submit.py --root /path/to/dump-or-scan-root
+# or: python3 -m no_intro_switch_cart_submission_cli --root …
+```
+
+Point **`--root`** at your organized tree (e.g. `Dumps/`) or any parent folder the tool should recurse under. Use **`--dry-run`**, **`--force`**, or **`-i`** when needed; see **`--help`** for every flag.
 
 Example output:
 ```
@@ -118,15 +126,6 @@ Put catalog strings in the configuration file (**`dumper`**, **`tool`**, **`regi
   - Any other length: no auto **`version1`**; set **`version1`** in the configuration file or **`--version1`** manually.
 
 **`--version1`** always overrides the automatic rule.
-
-Run:
-
-```bash
-python3 no_intro_batch_submit.py --root /path/to/dump-folder
-# equivalent: python3 -m no_intro_switch_cart_submission_cli --root …
-```
-
-Use **`--dry-run`**, **`--force`**, or **`-i`** as needed.
 
 ### Docker
 
