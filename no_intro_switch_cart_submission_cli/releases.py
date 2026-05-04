@@ -101,6 +101,44 @@ def parse_filename_fallback(filename: str) -> tuple[str | None, str | None, str 
     return prefix, None, tid
 
 
+_XCI_FOLDER_VER_DOT_RE = re.compile(
+    r"^[0-9]+(?:\.[0-9]+)*(?:[a-zA-Z]+|\.Switch)?$",
+    re.I,
+)
+_XCI_FOLDER_VER_USCORE_RE = re.compile(r"^[0-9]+(?:_[0-9A-Za-z]+)+$", re.I)
+_VNUM_BRACKET_STYLE_RE = re.compile(r"^v\d+$", re.I)
+
+
+def is_xci_folder_version_token(name: str) -> bool:
+    """True when ``name`` looks like an nxdt-style version folder (aligned with ``sort_gamecard.sh``)."""
+    n = (name or "").strip()
+    if not n:
+        return False
+    if _XCI_FOLDER_VER_DOT_RE.fullmatch(n):
+        return True
+    if _XCI_FOLDER_VER_USCORE_RE.fullmatch(n):
+        return True
+    return bool(_VNUM_BRACKET_STYLE_RE.fullmatch(n))
+
+
+def version_segment_for_submission_xml(default_xci: Path) -> str | None:
+    """
+    Middle segment for ``… - <segment> - <dumper> - <date> Submission.xml``.
+
+    Prefer the human version token from the nxdt basename (before ``[tid]``), else a
+    version-like parent directory name, else the bracket ``v…`` update token.
+    """
+    _, v_fn, _ = parse_filename_fallback(default_xci.name)
+    if v_fn and str(v_fn).strip():
+        return str(v_fn).strip()
+    if is_xci_folder_version_token(default_xci.parent.name):
+        return default_xci.parent.name.strip()
+    m = DUMP_FILE_RE.match(default_xci.name)
+    if m:
+        return m.group("vnum")
+    return None
+
+
 @dataclass
 class ReleaseFiles:
     directory: Path

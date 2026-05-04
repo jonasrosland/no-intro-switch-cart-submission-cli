@@ -27,6 +27,7 @@ from no_intro_switch_cart_submission_cli.releases import (
     format_title,
     list_trusted_dump_submission_xmls,
     parse_filename_fallback,
+    version_segment_for_submission_xml,
 )
 from no_intro_switch_cart_submission_cli.nstool_stdout import parse_cup_metadata, parse_jakcron_nstool_application_meta
 from no_intro_switch_cart_submission_cli.xml_build import build_xml, safe_filename_segment
@@ -223,7 +224,14 @@ def main() -> int:
             print("  skip: need Initial Data .bin for synthetic Full XCI hashes, or a Full XCI file present")
             continue
 
-        out_name = f"{safe_filename_segment(game_name)} - {safe_filename_segment(dumper or 'unknown')} - {dump_date} Submission.xml"
+        v_xml = version_segment_for_submission_xml(rel.default_xci)
+        base_parts = [safe_filename_segment(game_name)]
+        if v_xml:
+            base_parts.append(safe_filename_segment(v_xml))
+        base_parts.extend(
+            [safe_filename_segment(dumper or "unknown"), dump_date],
+        )
+        out_name = " - ".join(base_parts) + " Submission.xml"
         out_path = rel.directory / out_name
 
         if args.dry_run:

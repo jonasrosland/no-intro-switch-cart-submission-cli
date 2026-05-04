@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sort nxdt / No-Intro gamecard dumps into: Game Title/<version>/filename
-# Submission XML: ... - hitsaveorg - YYYY-MM-DD Submission.xml -> Title/_metadata/
+# Submission XML: … - [version -] hitsaveorg - YYYY-MM-DD Submission.xml -> Title/<version>/ or Title/_metadata/
 
 set -euo pipefail
 
@@ -34,6 +34,8 @@ is_version_token() {
 	[[ "$t" =~ ^[0-9]+(\.[0-9]+)*([a-zA-Z]+|\.Switch)?$ ]] && return 0
 	# Build / dated revisions (e.g. Melatonin 231013_2 …)
 	[[ "$t" =~ ^[0-9]+(_[0-9A-Za-z]+)+$ ]] && return 0
+	# nxdt bracket update token mirrored in submission filenames (e.g. v196608)
+	[[ "$t" =~ ^v[0-9]+$ ]] && return 0
 	return 1
 }
 
@@ -65,12 +67,30 @@ classify() {
 		fi
 	fi
 	shopt -s nocasematch
-	if [[ "$base" =~ ^(.+)[[:space:]]-[[:space:]]hitsaveorg[[:space:]]-[[:space:]][0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]]Submission\.xml$ ]]; then
+	if [[ "$base" =~ ^(.+)[[:space:]]-[[:space:]]hitsaveorg[[:space:]]-[[:space:]]([0-9]{4}-[0-9]{2}-[0-9]{2})[[:space:]]Submission\.xml$ ]]; then
 		shopt -u nocasematch
-		title="${BASH_REMATCH[1]}"
-		title="${title#"${title%%[![:space:]]*}"}"
-		title="${title%"${title##*[![:space:]]}"}"
-		printf '%s\t%s\t%s\n' submission "$title" ""
+		front="${BASH_REMATCH[1]}"
+		front="${front#"${front%%[![:space:]]*}"}"
+		front="${front%"${front##*[![:space:]]}"}"
+		title=""
+		ver=""
+		if [[ "$front" == *" - "* ]]; then
+			ver="${front##* - }"
+			ver="${ver#"${ver%%[![:space:]]*}"}"
+			ver="${ver%"${ver##*[![:space:]]}"}"
+			cand_title="${front% - $ver}"
+			cand_title="${cand_title#"${cand_title%%[![:space:]]*}"}"
+			cand_title="${cand_title%"${cand_title##*[![:space:]]}"}"
+			if is_version_token "$ver"; then
+				title="$cand_title"
+			else
+				title="$front"
+				ver=""
+			fi
+		else
+			title="$front"
+		fi
+		printf '%s\t%s\t%s\n' submission "$title" "$ver"
 		return 0
 	fi
 	shopt -u nocasematch

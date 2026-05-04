@@ -53,6 +53,18 @@ Dumps/
 
 Each **version** folder (e.g. `1.0.5/`) should contain **one** release’s files — not multiple unrelated Default XCIs in the same directory.
 
+### `sort_gamecard.sh` (optional organizer)
+
+After dumping over USB, files often land in one flat folder (e.g. NX Dump Client’s default **Downloads**). **`sort_gamecard.sh`** is a small **bash** helper in the repo root that **reorganizes** nxdt-style dumps into **`Game title/<version>/`** (it parses the title and version token from each filename’s **`[0100…][v…]`** block).
+
+The main CLI writes submission XML as **`Game - <version> - <dumper> - <YYYY-MM-DD> Submission.xml`**: **`<version>`** is taken from the nxdt basename when present (e.g. **`Aka 1.0.5 [0100…][v…].xci`** → **`1.0.5`**), else from a **version-shaped parent folder** (e.g. **`…/Aka/2.0.0/`**), else the bracket **`v…`** token so names stay unique. **`sort_gamecard.sh`** recognizes that pattern and moves orphaned **`… Submission.xml`** files into **`Title/<version>/`** when the embedded version parses as a version token; legacy **`Game - dumper - date Submission.xml`** names still go under **`Title/_metadata/`**.
+
+- Run **`./sort_gamecard.sh`** for a **dry run** (lists planned moves only).
+- Run **`./sort_gamecard.sh --execute`** to **apply** moves (creates directories as needed).
+- By default the script walks the directory **that contains the script** (see **`SOURCE_ROOT`** at the top of the file if you symlink or copy the script elsewhere).
+
+Then run the main submission script and point **`--root`** at your organized tree (e.g. `Dumps/` as above).
+
 Example output:
 ```
 ❯ python no_intro_batch_submit.py --dry-run --force --root ../Submitted/Aka 
@@ -65,7 +77,7 @@ Aka: extracting metadata and hashing game files
       updates (from filename token): v393216
       titles: Aka
       languages: De, En, Es, Fr, Ja, Ko, Pt
-  would write: Aka - hitsaveorg - 2026-05-04 Submission.xml
+  would write: Aka - v393216 - hitsaveorg - 2026-05-04 Submission.xml
 
 Done. 1 submission file(s).
 ```

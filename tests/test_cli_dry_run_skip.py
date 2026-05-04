@@ -33,7 +33,7 @@ class CliDryRunSkipsExistingSubmission(unittest.TestCase):
             rel.mkdir()
             xci = rel / "Cyber Shadow [0100ABCDEF012345][v16].xci"
             xci.write_bytes(b"\xff")
-            (rel / "Cyber Shadow - hitsaveorg - 2026-04-28 Submission.xml").write_text(
+            (rel / "Cyber Shadow - v16 - hitsaveorg - 2026-04-28 Submission.xml").write_text(
                 "<datafile />", encoding="utf-8"
             )
             cfg_path = root / "cfg.json"
