@@ -1,0 +1,12 @@
+{
+  "root": ".",
+  "nstool": "./nstool",
+  "prod_keys": "~/.switch/prod.keys",
+  "dumper": "your-handle",
+  "tool": "nxdt_rw_poc v2.0.0 (rewrite-dirty)",
+  "region": "World",
+  "languages": "",
+  "dump_date": null,
+  "skip_hidden": true,
+  "jakcron_extract_temp_dir": "temp-extract"
+}

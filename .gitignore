@@ -1,0 +1,44 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Local config (copy from no_intro_submit.example.json)
+no_intro_submit.json
+
+# Switch keys and dumps (never commit)
+prod.keys
+title.keys
+*.tik
+*.xci
+*.xcz
+*.nsp
+*.nsz
+
+# jakcron NSTool CLI binary (optional local install; Docker downloads its own)
+/nstool
+
+# Local LibHac clone (not part of this repo)
+LibHac/
+
+# Personal dump / output trees
+games/
+
+# jakcron secure-extract working tree (default <cwd>/temp-extract; may hold decrypted .nca briefly)
+temp-extract/
+
+# Editors / OS
+.cursor/
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

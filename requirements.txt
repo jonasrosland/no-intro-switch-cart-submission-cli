@@ -1,0 +1,2 @@
+# PyPI nstools (RomFS/NACP/CNMT parsing — not jakcron NSTool CLI)
+nstools>=1.2.0,<2
