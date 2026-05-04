@@ -63,6 +63,7 @@ The main CLI writes submission XML as **`Game - <version> - <dumper> - <YYYY-MM-
 - Run **`./sort_gamecard.sh --execute`** to **apply** moves (creates directories as needed).
 - By default the script walks the directory **that contains the script** (see **`SOURCE_ROOT`** at the top of the file if you symlink or copy the script elsewhere).
 
+### Run the script
 Then run the main submission script and point **`--root`** at your organized tree (e.g. `Dumps/` as above).
 
 Example output:
@@ -77,7 +78,7 @@ Aka: extracting metadata and hashing game files
       updates (from filename token): v393216
       titles: Aka
       languages: De, En, Es, Fr, Ja, Ko, Pt
-  would write: Aka - v393216 - hitsaveorg - 2026-05-04 Submission.xml
+  would write: Aka - 1.0.6 - hitsaveorg - 2026-05-04 Submission.xml
 
 Done. 1 submission file(s).
 ```
