@@ -36,16 +36,22 @@ You do not need **`skip_hidden`**, **`jakcron_basenca`**, **`title_keys`**, or a
 
 **One cart = one folder.** Treat each release directory as holding **at most one** matching **Default** **`.xci`** (name includes **`[0100…]`** retail Title ID and **`[v…]`**). The scanner walks **`--root` recursively** and assigns **one** submission per folder that contains such an `.xci`.
 
-An example file layout could be:
-- Dumps
-  - Game1
-    - Version
-      - dumped filed
-  - Game2
-    - Version
-      - dumped files
+An example layout (point **`--root`** at **`Dumps/`**; the tool recurses into each game and version folder):
 
-You can then point `--root` to `Dumps`, and the tool will automatically go through each game and their versions.
+```text
+Dumps/
+├── Cyber Shadow/
+│   └── 1.0.5/
+│       ├── Cyber Shadow 1.0.5 [01008D100DE46000][v196608] [NKA][NC][NT].xci
+│       ├── Cyber Shadow 1.0.5 [01008D100DE46000][v196608] (Initial Data) (57A3A06C).bin
+│       └── Cyber Shadow 1.0.5 [01008D100DE46000][v196608] (Card ID Set) (6CD8FDA1).bin   (optional)
+└── Another Game/
+    └── v393216/
+        ├── Another Game 2.0 [0100ABCDEF012345][v393216] [NKA][NC][NT].xci
+        └── Another Game 2.0 [0100ABCDEF012345][v393216] (Initial Data) (AB12CD34).bin
+```
+
+Each **version** folder (e.g. `1.0.5/`) should contain **one** release’s files — not multiple unrelated Default XCIs in the same directory.
 
 Example output:
 ```
