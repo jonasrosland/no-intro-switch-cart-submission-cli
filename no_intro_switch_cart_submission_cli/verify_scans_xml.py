@@ -84,6 +84,72 @@ def canonical_serial_for_compare(key: str, value: str) -> str:
     return v
 
 
+def verify_scans_against_submission_xml(
+    cfg_path: Path,
+    submission_xml: Path,
+    release_dir: Path | None,
+    compare: str,
+) -> int:
+    """
+    Compare serials in ``submission_xml`` to a fresh ``Scans/`` VLM extraction using ``cfg_path``.
+
+    ``release_dir`` may be ``None`` (use parent directory of the XML). ``compare`` is ``stored`` or ``all``.
+    """
+    xml_path = submission_xml.expanduser().resolve()
+    if not xml_path.is_file():
+        print(f"verify_scans_xml: not a file: {xml_path}", file=sys.stderr)
+        return 2
+
+    rel_dir = (release_dir.expanduser().resolve() if release_dir else xml_path.parent)
+    if not rel_dir.is_dir():
+        print(f"verify_scans_xml: not a directory: {rel_dir}", file=sys.stderr)
+        return 2
+
+    cfg_p = cfg_path.expanduser()
+    if not cfg_p.is_file():
+        print(f"verify_scans_xml: configuration not found: {cfg_p}", file=sys.stderr)
+        return 2
+
+    cfg = load_config(cfg_p)
+    if not vlm_extract_command(cfg):
+        print(
+            "verify_scans_xml: set scan_ocr.vlm_extract_command in your configuration "
+            "(same as for --ocr-scans).",
+            file=sys.stderr,
+        )
+        return 2
+
+    expected = parse_trusted_dump_serials_from_submission_xml(xml_path)
+    vlm_row = {k: "" for k in _COMPARE_KEYS}
+    msgs = try_fill_serial_row_from_scans(rel_dir, vlm_row, cfg)
+
+    print(f"Submission XML: {xml_path}")
+    print(f"Release / Scans anchor: {rel_dir}")
+    print("Expected (XML):", submission_xml_serials_summary(expected))
+    print("VLM (Scans/): ", submission_xml_serials_summary(vlm_row))
+    for ln in msgs:
+        print(f"  {ln}")
+
+    mismatches: list[str] = []
+    for key in _COMPARE_KEYS:
+        e = canonical_serial_for_compare(key, expected.get(key, ""))
+        g = canonical_serial_for_compare(key, vlm_row.get(key, ""))
+        if e == g:
+            continue
+        if compare == "stored" and not (expected.get(key) or "").strip():
+            continue
+        mismatches.append(f"{key}: XML {expected.get(key, '')!r} vs VLM {vlm_row.get(key, '')!r} (normalized {e!r} vs {g!r})")
+
+    if mismatches:
+        print("\nMismatch:", file=sys.stderr)
+        for m in mismatches:
+            print(f"  {m}", file=sys.stderr)
+        return 1
+
+    print("\nOK: serial fields match within the chosen compare mode.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--config", type=Path, default=CONFIG_FILE, help="JSON configuration (default: repo no_intro_submit.json)")
@@ -110,59 +176,12 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    xml_path = args.submission_xml.expanduser().resolve()
-    if not xml_path.is_file():
-        print(f"verify_scans_xml: not a file: {xml_path}", file=sys.stderr)
-        return 2
-
-    release_dir = args.release_dir.expanduser().resolve() if args.release_dir else xml_path.parent
-    if not release_dir.is_dir():
-        print(f"verify_scans_xml: not a directory: {release_dir}", file=sys.stderr)
-        return 2
-
-    cfg_path = args.config.expanduser()
-    if not cfg_path.is_file():
-        print(f"verify_scans_xml: configuration not found: {cfg_path}", file=sys.stderr)
-        return 2
-
-    cfg = load_config(cfg_path)
-    if not vlm_extract_command(cfg):
-        print(
-            "verify_scans_xml: set scan_ocr.vlm_extract_command in your configuration "
-            "(same as for --ocr-scans).",
-            file=sys.stderr,
-        )
-        return 2
-
-    expected = parse_trusted_dump_serials_from_submission_xml(xml_path)
-    vlm_row = {k: "" for k in _COMPARE_KEYS}
-    msgs = try_fill_serial_row_from_scans(release_dir, vlm_row, cfg)
-
-    print(f"Submission XML: {xml_path}")
-    print(f"Release / Scans anchor: {release_dir}")
-    print("Expected (XML):", submission_xml_serials_summary(expected))
-    print("VLM (Scans/): ", submission_xml_serials_summary(vlm_row))
-    for ln in msgs:
-        print(f"  {ln}")
-
-    mismatches: list[str] = []
-    for key in _COMPARE_KEYS:
-        e = canonical_serial_for_compare(key, expected.get(key, ""))
-        g = canonical_serial_for_compare(key, vlm_row.get(key, ""))
-        if e == g:
-            continue
-        if args.compare == "stored" and not (expected.get(key) or "").strip():
-            continue
-        mismatches.append(f"{key}: XML {expected.get(key, '')!r} vs VLM {vlm_row.get(key, '')!r} (normalized {e!r} vs {g!r})")
-
-    if mismatches:
-        print("\nMismatch:", file=sys.stderr)
-        for m in mismatches:
-            print(f"  {m}", file=sys.stderr)
-        return 1
-
-    print("\nOK: serial fields match within the chosen compare mode.")
-    return 0
+    return verify_scans_against_submission_xml(
+        args.config,
+        args.submission_xml,
+        args.release_dir,
+        args.compare,
+    )
 
 
 if __name__ == "__main__":

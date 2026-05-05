@@ -125,11 +125,45 @@ def main() -> int:
             "Can also be enabled with ``\"scan_ocr\": { \"vlm_debug_crops\": true }`` in the configuration file."
         ),
     )
+    ap.add_argument(
+        "--submission-xml",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Verify mode: compare this * Submission.xml to a fresh Scans/ VLM fill, then exit "
+            "(same behavior as python -m no_intro_switch_cart_submission_cli.verify_scans_xml). "
+            "Does not scan --root or write XML."
+        ),
+    )
+    ap.add_argument(
+        "--release-dir",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="With --submission-xml: release folder for Scans/ (default: parent directory of the XML).",
+    )
+    ap.add_argument(
+        "--compare",
+        choices=("stored", "all"),
+        default="stored",
+        help="With --submission-xml: stored vs all (default: stored). Ignored without --submission-xml.",
+    )
     manual.add_argument("--dumper", default=None, help="Override config dumper for this run.")
     manual.add_argument("--region", default=None)
     manual.add_argument("--languages", default=None)
     manual.add_argument("--dump-date", dest="dump_date_cli", default=None, metavar="YYYY-MM-DD")
     args = ap.parse_args()
+
+    if args.submission_xml is not None:
+        from no_intro_switch_cart_submission_cli.verify_scans_xml import verify_scans_against_submission_xml
+
+        return verify_scans_against_submission_xml(
+            args.config,
+            args.submission_xml,
+            args.release_dir,
+            args.compare,
+        )
 
     cfg = load_config(args.config)
     if getattr(args, "ocr_dump_crops", False) and not ocr_scans_enabled(cfg, args):

@@ -240,6 +240,8 @@ python3 -m no_intro_switch_cart_submission_cli.verify_scans_xml \
   --release-dir "games/Cyber Shadow/1.0.5"
 ```
 
+The same **``--submission-xml``**, **``--release-dir``**, and **``--compare``** options work on **``no_intro_batch_submit.py``** (and **``python -m no_intro_switch_cart_submission_cli.cli``**): when **``--submission-xml``** is set, the program runs verify only and exits (**``--root``** is ignored).
+
 **``--release-dir``** is the version folder next to (or containing) **``Scans/``** — the same directory the main CLI uses as the release folder. If omitted, the XML file’s parent directory is used.
 
 By default (**``--compare stored``**), only fields that are **non-empty in the XML** must match the VLM (so you can check a partial submission). Use **``--compare all``** to require every serial field to match, including empty-in-XML vs non-empty VLM. Exit code **``1``** on mismatch, **``0``** when comparison passes. **``box_serial``** is compared after normalizing common formatting drift (e.g. XML ``HAC P AT5VA`` vs VLM ``HAC-P-AT5VA``).
