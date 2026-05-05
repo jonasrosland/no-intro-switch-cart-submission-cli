@@ -24,6 +24,7 @@ from no_intro_switch_cart_submission_cli.cart_scan_ocr import (
     ocr_scans_enabled,
     resolve_scans_dir,
     run_vlm_serial_extract,
+    scan_basename_ignored_for_scan_ocr,
     scan_ocr_rois_for_role,
     scan_ocr_rois_from_cfg,
     try_fill_serial_row_from_scans,
@@ -301,6 +302,47 @@ class DiscoverScanPathsByRole(unittest.TestCase):
             self.assertEqual(got["cart_front"], d / "b.png")
             self.assertEqual(got["cart_back"], d / "m.png")
 
+    def test_reverse_inside_basenames_not_used_for_insert_or_order(self) -> None:
+        """reverse-insert sorts before many names and matches *insert* — must be excluded from the pool."""
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "Scans"
+            d.mkdir()
+            (d / "reverse-insert.png").write_bytes(b"x")
+            (d / "spread-flat.png").write_bytes(b"x")
+            got = discover_scan_paths_by_role(d, {})
+            self.assertEqual(got["insert_spread"], d / "spread-flat.png")
+
+    def test_assign_by_sorted_order_skips_reverse_files(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "Scans"
+            d.mkdir()
+            for name in ("reverse.png", "a.png", "b.png", "c.png"):
+                (d / name).write_bytes(b"x")
+            cfg = {"scan_ocr": {"assign_by_sorted_order": True}}
+            got = discover_scan_paths_by_role(d, cfg)
+            self.assertEqual(got["insert_spread"], d / "a.png")
+            self.assertEqual(got["cart_front"], d / "b.png")
+            self.assertEqual(got["cart_back"], d / "c.png")
+
+    def test_explicit_reverse_basename_is_skipped(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "Scans"
+            d.mkdir()
+            (d / "reverse.png").write_bytes(b"x")
+            (d / "flatbed.png").write_bytes(b"x")
+            cfg = {
+                "scan_ocr": {
+                    "files": {"insert_spread": "reverse.png"},
+                }
+            }
+            got = discover_scan_paths_by_role(d, cfg)
+            self.assertEqual(got["insert_spread"], d / "flatbed.png")
+
+    def test_ignore_scan_patterns_config(self) -> None:
+        cfg = {"scan_ocr": {"ignore_scan_patterns": ["*archive*"]}}
+        self.assertTrue(scan_basename_ignored_for_scan_ocr("foo_archive_bar.png", cfg))
+        self.assertFalse(scan_basename_ignored_for_scan_ocr("foo_archive_bar.png", {}))
+
 
 class CombineExtractions(unittest.TestCase):
     def test_pcb_serial_only_from_cart_back(self) -> None:
@@ -407,6 +449,18 @@ class VlmExtractHelpers(unittest.TestCase):
 
 
 class TryFillFromScansMocked(unittest.TestCase):
+    def test_all_basenames_ignored_returns_clear_message(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            ver = Path(td) / "1.0"
+            scans = Path(td) / "Scans"
+            ver.mkdir(parents=True)
+            scans.mkdir()
+            (scans / "reverse.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+            row = {k: "" for k in ("media_serial1", "media_serial2", "box_serial", "box_barcode", "pcb_serial")}
+            cfg = {"scan_ocr": {"vlm_extract_command": ["true"]}}
+            msgs = try_fill_serial_row_from_scans(ver, row, cfg)
+            self.assertTrue(any("no images left after" in m for m in msgs), msg=msgs)
+
     def test_fills_from_vlm_fields_on_insert(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             tmp_path = Path(td)
@@ -561,6 +615,34 @@ class TryFillFromScansMocked(unittest.TestCase):
             tags = [c.args[1] for c in w.call_args_list]
             self.assertIn("insert_spread", tags)
             self.assertIn("scan_orphan", tags)
+
+    def test_dump_skips_ignored_reverse_for_unassigned(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            ver = Path(td) / "1.0"
+            scans = Path(td) / "Scans"
+            ver.mkdir(parents=True)
+            scans.mkdir()
+            (scans / "insert_only.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+            (scans / "orphan.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+            (scans / "inside-cover.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+            row = {k: "" for k in ("media_serial1", "media_serial2", "box_serial", "box_barcode", "pcb_serial")}
+            cfg = {
+                "scan_ocr": {
+                    "files": {"insert_spread": "insert_only.png"},
+                    "vlm_extract_command": ["true"],
+                }
+            }
+            with patch(
+                "no_intro_switch_cart_submission_cli.cart_scan_ocr._vlm_fields_from_cropped_rois",
+                return_value=({"box_serial": "HAC-P-X"}, None),
+            ), patch(
+                "no_intro_switch_cart_submission_cli.cart_scan_ocr.write_ocr_debug_crops",
+            ) as w:
+                try_fill_serial_row_from_scans(ver, row, cfg, dump_roi_crops=True)
+            tags = [c.args[1] for c in w.call_args_list]
+            self.assertIn("insert_spread", tags)
+            self.assertIn("scan_orphan", tags)
+            self.assertNotIn("scan_inside-cover", tags)
 
     def test_for_cli_respects_disabled(self) -> None:
         with tempfile.TemporaryDirectory() as td:

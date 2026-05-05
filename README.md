@@ -139,7 +139,7 @@ Expect **up to three** photos per title (names or `scan_ocr.files` in the config
 | **cart_front** | **Cartridge front** (LA-H-… → **`media_serial1`**) | Yes if you only have packaging scans |
 | **cart_back** | **Cartridge back** (**`media_serial2`**, **`pcb_serial`**) | Yes |
 
-**Inside / reverse cover** flatbeds are **not** cropped or sent to a model by this tool (keep them in `Scans/` for your own archive if you like; they are ignored for role assignment and serial extraction).
+**Inside / reverse cover** flatbeds are **not** cropped or sent to a model by this tool (keep them in `Scans/` for your own archive if you like). Basenames matching built-in **`fnmatch`** patterns `*reverse*` and `*inside*` (case-insensitive) are skipped entirely, including **`scan_ocr.files`** and **`_ocr_crop_debug`** dumps. Add more globs via **`scan_ocr.ignore_scan_patterns`** (list of strings).
 
 **Vision model on ROI crops:** set **`scan_ocr.vlm_extract_command`** to an argv list (see below). The tool applies the same **ROI crops** (grayscale, autocontrast, resize) as for **`--ocr-dump-crops`**; **`{image}`** is each **temporary crop PNG** in turn (not the full flatbed). Each role triggers **one subprocess per ROI** (e.g. two ROIs → two calls). Set **`vlm_timeout_seconds`** high enough for the slowest role (**`insert_spread`** uses **two** HTTP calls per crop in **`lmstudio_serial_extract.py`** — **`box_serial`** then **`box_barcode`**).
 
@@ -183,7 +183,7 @@ The tool reads **each assigned image** by role and merges VLM JSON per field rul
 - **`media_serial2`** — **cart_back** only (laser etch and/or ``TSA-HAC-…`` on the cart reverse).
 - **`pcb_serial`** — **cart_back** only.
 
-**Discovery:** (1) **`scan_ocr.files`** maps each role to a **basename** under `Scans/`; (2) else **fnmatch** on the filename (`scan_ocr.role_patterns` overrides defaults); (3) if **insert_spread** is still unassigned, the first sorted image not already used for another role becomes the insert (legacy single-scan layout); (4) if **`"assign_by_sorted_order": true`**, any role that is still empty gets the next unused image in **sorted filename order**, following **insert_spread** → **cart_front** → **cart_back** — use this when filenames are generic (e.g. camera rolls) but you **always order** the three shots the same way before running the tool.
+**Discovery:** (0) skip any basename matching **`ignore_scan_patterns`** plus the built-in `*reverse*` / `*inside*` skips; (1) **`scan_ocr.files`** maps each role to a **basename** under `Scans/`; (2) else **fnmatch** on the filename (`scan_ocr.role_patterns` overrides defaults); (3) if **insert_spread** is still unassigned, the first sorted image not already used for another role becomes the insert (legacy single-scan layout); (4) if **`"assign_by_sorted_order": true`**, any role that is still empty gets the next unused image in **sorted filename order**, following **insert_spread** → **cart_front** → **cart_back** — use this when filenames are generic (e.g. camera rolls) but you **always order** the three shots the same way before running the tool.
 
 The tool does **not** inspect image content to guess roles; without names or patterns you only get a reliable **insert** from the first file (step 3). For cart photos you need either **meaningful names**, **`scan_ocr.files`**, or **`assign_by_sorted_order`**.
 
