@@ -16,13 +16,9 @@ Example ``scan_ocr`` block::
 
 If ``--model`` is omitted, the first model id from ``GET {base-url}/models`` is used (single loaded model).
 
-For ``--role cart_back`` only: if both ``media_serial2`` and ``pcb_serial`` are empty after the first
-reply (common small-VLM flake), the script sends **one** follow-up request with a shorter nudge
-prompt unless ``--no-retry-on-empty`` is set.
-
 For ``--role insert_spread`` the script sends **two** requests per image (``box_serial`` then ``box_barcode``)
-so the model is not asked to read both in one reply. Optional **one** extra ``box_serial`` retry unless
-``--no-retry-on-insert-box`` is set (up to **three** HTTP calls per insert crop). Size timeouts accordingly.
+so the model is not asked to read both in one reply. There are **no** extra retries on empty or malformed
+output: one pass per sub-task.
 
 The parent CLI replaces ``{image}`` and ``{role}`` when invoking the command per scan file.
 """
@@ -43,31 +39,6 @@ if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
 import vlm_serial_common as vlm  # noqa: E402
-
-# Second pass when cart_back returns nothing (vision models often flake on one try).
-_CART_BACK_RETRY_PROMPT = (
-    "Same Nintendo Switch **cartridge back** photo again.\n"
-    "Return **one JSON object** with every key: media_serial1, media_serial2, box_serial, "
-    "box_barcode, pcb_serial. Use \"\" where not applicable.\n"
-    "You **must** read from the plastic and PCB:\n"
-    "- **media_serial2**: the **printed** twelve-to-sixteen character **A–Z**/**0–9** line on the "
-    "shell (no spaces in output). **Not** embossed **HAC-008**. Optional **TSA-HAC-…-REG** line "
-    "if printed instead.\n"
-    "- **pcb_serial**: **▼** and digits seen **through the contact slots** on the PCB (e.g. **▼ 10**). "
-    "Use **@** / **$** shortcuts if needed.\n"
-    "Leave **media_serial1**, **box_serial**, **box_barcode** as \"\".\n"
-    "No markdown. No prose outside the JSON.\n"
-)
-
-_INSERT_BOX_RETRY_PROMPT = (
-    "Same Nintendo Switch **retail insert** crop again.\n"
-    "Return **one JSON object** with every key: media_serial1, media_serial2, box_serial, "
-    "box_barcode, pcb_serial. Use \"\" for media_serial1, media_serial2, box_barcode, and pcb_serial.\n"
-    "**box_serial** only — Find the printed code **HAC-P-** (H, A, C, hyphen, P, hyphen) then copy "
-    "**exactly five** letters or digits after that second hyphen as one token (e.g. **HAC-P-ATSVA**). "
-    "Do **not** use **LA-H-** cart lines, **TSA-HAC-** media lines, or the **barcode digit row**.\n"
-    "No markdown. No prose outside the JSON.\n"
-)
 
 
 def _chat_completions_url(base_url: str) -> str:
@@ -192,16 +163,6 @@ def main() -> None:
         default=180.0,
         help="HTTP timeout in seconds for each request (separate from scan_ocr.vlm_timeout_seconds).",
     )
-    ap.add_argument(
-        "--no-retry-on-empty",
-        action="store_true",
-        help="For cart_back only: do not send a second request when both media_serial2 and pcb_serial are empty.",
-    )
-    ap.add_argument(
-        "--no-retry-on-insert-box",
-        action="store_true",
-        help="For insert_spread only: do not send a second request when box_serial is missing or malformed.",
-    )
     args = ap.parse_args()
     path = Path(args.image)
     if not path.is_file():
@@ -221,19 +182,6 @@ def main() -> None:
                 timeout=args.request_timeout,
             )
             out_serial = vlm.parse_and_postprocess_vlm_text(raw_serial, "insert_spread")
-            if (
-                not args.no_retry_on_insert_box
-                and not vlm.valid_box_serial_strict((out_serial.get("box_serial") or "").strip())
-            ):
-                raw_serial = _run_lm_studio_chat(
-                    args.base_url,
-                    model_id,
-                    path,
-                    _INSERT_BOX_RETRY_PROMPT,
-                    max_tokens=args.max_tokens,
-                    timeout=args.request_timeout,
-                )
-                out_serial = vlm.parse_and_postprocess_vlm_text(raw_serial, "insert_spread")
             raw_barcode = _run_lm_studio_chat(
                 args.base_url,
                 model_id,
@@ -257,21 +205,6 @@ def main() -> None:
                 model_id,
                 path,
                 prompt,
-                max_tokens=args.max_tokens,
-                timeout=args.request_timeout,
-            )
-            out = vlm.parse_and_postprocess_vlm_text(raw, args.role)
-        if (
-            args.role == "cart_back"
-            and not args.no_retry_on_empty
-            and not (out.get("media_serial2") or "").strip()
-            and not (out.get("pcb_serial") or "").strip()
-        ):
-            raw = _run_lm_studio_chat(
-                args.base_url,
-                model_id,
-                path,
-                _CART_BACK_RETRY_PROMPT,
                 max_tokens=args.max_tokens,
                 timeout=args.request_timeout,
             )

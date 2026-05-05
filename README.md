@@ -141,7 +141,7 @@ Expect **up to three** photos per title (names or `scan_ocr.files` in the config
 
 **Inside / reverse cover** flatbeds are **not** cropped or sent to a model by this tool (keep them in `Scans/` for your own archive if you like; they are ignored for role assignment and serial extraction).
 
-**Vision model on ROI crops:** set **`scan_ocr.vlm_extract_command`** to an argv list (see below). The tool applies the same **ROI crops** (grayscale, autocontrast, resize) as for **`--ocr-dump-crops`**; **`{image}`** is each **temporary crop PNG** in turn (not the full flatbed). Each role triggers **one subprocess per ROI** (e.g. two ROIs → two calls). Set **`vlm_timeout_seconds`** high enough for the slowest role (insert crops may trigger **several** HTTP round-trips in **`lmstudio_serial_extract.py`**).
+**Vision model on ROI crops:** set **`scan_ocr.vlm_extract_command`** to an argv list (see below). The tool applies the same **ROI crops** (grayscale, autocontrast, resize) as for **`--ocr-dump-crops`**; **`{image}`** is each **temporary crop PNG** in turn (not the full flatbed). Each role triggers **one subprocess per ROI** (e.g. two ROIs → two calls). Set **`vlm_timeout_seconds`** high enough for the slowest role (**`insert_spread`** uses **two** HTTP calls per crop in **`lmstudio_serial_extract.py`** — **`box_serial`** then **`box_barcode`**).
 
 Enable with **`"ocr_scans": true`**, **`"scan_ocr": { "enabled": true, … }`**, or **`--ocr-scans`**. **`--ocr-dump-crops`** (or **`"scan_ocr": { "dump_crops": true }`**) writes each ROI crop to **`<release folder>/_ocr_crop_debug/`** (and **`{role}_raw.txt`** as an empty legacy slot); delete that folder when done.
 
@@ -170,7 +170,7 @@ Unknown keys are ignored. Trailing prose is tolerated if the first ``{`` starts 
       "{image}"
     ]
 
-For **`cart_back`**, the script may issue **one extra** HTTP request when the first reply leaves **both** **`media_serial2`** and **`pcb_serial`** empty (small VLMs are flaky). Pass **`--no-retry-on-empty`** in **`vlm_extract_command`** to disable that. For **`insert_spread`**, **`lmstudio_serial_extract.py`** sends **two** requests per crop (**`box_serial`**, then **`box_barcode`**) and may send **one** more to retry **`box_serial`** when it is still invalid; pass **`--no-retry-on-insert-box`** to disable that retry. Allow enough **`vlm_timeout_seconds`** for **three** HTTP round-trips on **insert** crops when retries are enabled (two passes minimum).
+For **`insert_spread`**, **`lmstudio_serial_extract.py`** sends **two** HTTP requests per crop (**`box_serial`**, then **`box_barcode`**); **`cart_front`** and **`cart_back`** use **one** each. There are no automatic retries — size **`vlm_timeout_seconds`** for that many round-trips per subprocess invocation.
 
 **OlmOCR and other document VLMs:** any wrapper that accepts an image path, runs your model (e.g. [allenai OlmOCR](https://github.com/allenai/olmocr)), and prints **one JSON object** on stdout with the keys above can be listed in **`vlm_extract_command`** the same way — use **`{image}`** / **`{role}`** placeholders like the bundled scripts.
 
