@@ -1,4 +1,4 @@
-"""Optional OCR over flatbed scans in ``Scans/`` to fill empty submission serial fields."""
+"""Optional ``Scans/`` pipeline: ROI crops + vision-model subprocess to fill empty serial fields."""
 
 from __future__ import annotations
 
@@ -219,24 +219,6 @@ def scan_ocr_rois_from_cfg(cfg: dict[str, Any]) -> list[tuple[float, float, floa
         return list(DEFAULT_SCAN_OCR_ROIS)
     parsed = _parse_roi_dict_list(block.get("rois"))
     return parsed or list(DEFAULT_SCAN_OCR_ROIS)
-
-
-def tesseract_cart_config(cfg: dict[str, Any] | None) -> str:
-    """
-    Extra Tesseract ``-c`` / ``--psm`` flags for **cart_front** and **cart_back** only.
-
-    Set ``scan_ocr.tesseract_cart_config`` in JSON (e.g. ``\"--oem 3 --psm 6\"``). Default is
-    ``--oem 3 --psm 6`` (single uniform text block), which often reads small stamps better than
-    ``--psm 3``. Install ``tessdata_best`` traineddata for fewer substitutions vs ``tessdata_fast``.
-    """
-    if not cfg:
-        return "--oem 3 --psm 6"
-    block = cfg.get("scan_ocr")
-    if isinstance(block, dict):
-        v = block.get("tesseract_cart_config")
-        if isinstance(v, str) and v.strip():
-            return v.strip()
-    return "--oem 3 --psm 6"
 
 
 def scan_ocr_rois_for_role(cfg: dict[str, Any], role: str) -> list[tuple[float, float, float, float]]:
@@ -563,59 +545,6 @@ def extract_serial_fields_from_ocr_text(text: str) -> dict[str, str]:
     return out
 
 
-def _tesseract_on_path() -> bool:
-    return shutil.which("tesseract") is not None
-
-
-def ocr_prepared_grayscale(image: Any, *, tesseract_config: str = "--oem 3 --psm 3") -> str:
-    from PIL import Image
-
-    if not isinstance(image, Image.Image):
-        raise TypeError("expected PIL.Image")
-    import pytesseract
-
-    if not _tesseract_on_path():
-        raise FileNotFoundError("tesseract executable not found on PATH")
-    # Insert / general: ``--psm 3`` (full page). Cart stamps use ``scan_ocr.tesseract_cart_config``
-    # (default ``--psm 6`` uniform block) via ``ocr_text_from_cart_image_path``.
-    return pytesseract.image_to_string(image, lang="eng", config=tesseract_config)
-
-
-def _ocr_prepared_digits_barcode_line(image: Any) -> str:
-    """
-    Restrict OCR to digits and ASCII space so a GTIN line stays ``_find_box_barcode_line``-eligible
-    (high digit ratio). Unconstrained ``ocr_prepared_grayscale`` on the same crop often injects
-    letters and punctuation that break barcode detection.
-    """
-    from PIL import Image
-
-    if not isinstance(image, Image.Image):
-        raise TypeError("expected PIL.Image")
-    import pytesseract
-
-    if not _tesseract_on_path():
-        raise FileNotFoundError("tesseract executable not found on PATH")
-    wl = "0123456789 "
-    return pytesseract.image_to_string(
-        image,
-        config=f"--oem 3 --psm 6 -c tessedit_char_whitelist={wl}",
-    )
-
-
-def _ocr_barcode_zone_crop(prepared: Any) -> str:
-    """OCR a bottom-quarter crop: top band (HAC-P / TSA line) then full frame (barcode + text)."""
-    parts: list[str] = []
-    cw, ch = prepared.size
-    if ch > 80:
-        h_top = max(28, int(ch * 0.44))
-        top = prepared.crop((0, 0, cw, h_top))
-        if top.size[1] >= 20:
-            parts.append(ocr_prepared_grayscale(top).strip())
-    parts.append(ocr_prepared_grayscale(prepared).strip())
-    parts.append(_ocr_prepared_digits_barcode_line(prepared).strip())
-    return "\n".join(p for p in parts if p) + ("\n" if any(parts) else "")
-
-
 def _prepare_roi_crop(im: Any, frac: tuple[float, float, float, float]) -> Any:
     from PIL import Image, ImageOps
 
@@ -644,62 +573,8 @@ def _prepare_roi_crop(im: Any, frac: tuple[float, float, float, float]) -> Any:
     return crop
 
 
-def ocr_text_from_cart_image_path(
-    path: Path,
-    rois: list[tuple[float, float, float, float]],
-    cfg: dict[str, Any] | None = None,
-) -> str:
-    """Cart stamp OCR: ``eng`` per ROI; Tesseract flags from ``tesseract_cart_config(cfg)``."""
-    from PIL import Image
-
-    im = Image.open(path)
-    im.load()
-    if im.mode not in ("RGB", "L", "RGBA"):
-        im = im.convert("RGB")
-    chunks: list[str] = []
-    tess_cfg = tesseract_cart_config(cfg)
-    for frac in rois:
-        prepared = _prepare_roi_crop(im, frac)
-        chunks.append(ocr_prepared_grayscale(prepared, tesseract_config=tess_cfg).strip())
-    return "\n\n".join(c for c in chunks if c)
-
-
-def ocr_text_from_image_path(path: Path, rois: list[tuple[float, float, float, float]]) -> str:
-    from PIL import Image
-
-    im = Image.open(path)
-    im.load()
-    if im.mode not in ("RGB", "L", "RGBA"):
-        im = im.convert("RGB")
-    chunks: list[str] = []
-    for frac in rois:
-        prepared = _prepare_roi_crop(im, frac)
-        chunks.append(_ocr_barcode_zone_crop(prepared))
-    return "\n".join(chunks)
-
-
-def ocr_text_from_image_path_with_barcode_roi(path: Path, rois: list[tuple[float, float, float, float]]) -> str:
-    """Alphanumeric OCR on each ROI; digit-friendly pass on the **last** ROI (helps barcode digits on bottom strips)."""
-    from PIL import Image
-
-    im = Image.open(path)
-    im.load()
-    if im.mode not in ("RGB", "L", "RGBA"):
-        im = im.convert("RGB")
-    if not _tesseract_on_path():
-        raise FileNotFoundError("tesseract executable not found on PATH")
-    chunks: list[str] = []
-    for i, frac in enumerate(rois):
-        prepared = _prepare_roi_crop(im, frac)
-        if i == len(rois) - 1:
-            chunks.append(_ocr_prepared_digits_barcode_line(prepared))
-        else:
-            chunks.append(ocr_prepared_grayscale(prepared))
-    return "\n".join(chunks)
-
-
 def merge_ocr_into_serial_row(serial_row: dict[str, str], ocr_fields: dict[str, str]) -> list[str]:
-    """Fill only empty keys among media / box / pcb serial fields from OCR merge."""
+    """Fill only empty keys among media / box / pcb serial fields from merged scan hints."""
     filled: list[str] = []
     for k in ("media_serial1", "media_serial2", "box_serial", "box_barcode", "pcb_serial"):
         v = (ocr_fields.get(k) or "").strip()
@@ -710,19 +585,6 @@ def merge_ocr_into_serial_row(serial_row: dict[str, str], ocr_fields: dict[str, 
         serial_row[k] = normalize_pcb_serial(v) if k == "pcb_serial" else v
         filled.append(k)
     return filled
-
-
-def _ocr_one_image(
-    path: Path,
-    rois: list[tuple[float, float, float, float]],
-    role: str,
-    cfg: dict[str, Any] | None = None,
-) -> str:
-    if role in ("cart_front", "cart_back"):
-        return ocr_text_from_cart_image_path(path, rois, cfg)
-    if len(rois) > 1:
-        return ocr_text_from_image_path_with_barcode_roi(path, rois)
-    return ocr_text_from_image_path(path, rois)
 
 
 def ocr_dump_crops_requested(cfg: dict[str, Any], args: Any) -> bool:
@@ -763,32 +625,13 @@ def _vlm_timeout_seconds(cfg: dict[str, Any]) -> int:
 
 def vlm_fill_empty_only(cfg: dict[str, Any]) -> bool:
     """
-    When true (default), each VLM JSON merge only fills keys still empty in the working dict.
-
-    With Tesseract disabled (``scan_ocr.use_tesseract: false``), this applies across ROI passes
-    for the same role and relative to any text extraction from earlier steps (normally none).
+    When true (default), each VLM JSON merge only fills keys still empty in the working dict
+    (including across multiple ROI passes for the same role).
     """
     block = cfg.get("scan_ocr")
     if not isinstance(block, dict):
         return True
     v = block.get("vlm_fill_empty_only", True)
-    if v is False or str(v).strip().lower() in ("0", "false", "no"):
-        return False
-    return True
-
-
-def scan_ocr_use_tesseract(cfg: dict[str, Any]) -> bool:
-    """
-    When false, skip Tesseract entirely and read serials only from the VLM subprocess.
-
-    The VLM is invoked **once per ROI** on the same grayscale / autocontrast / resize crops as
-    ``--ocr-dump-crops`` (not the full scan). Requires ``scan_ocr.vlm_extract_command``.
-    Default true for backward compatibility.
-    """
-    block = cfg.get("scan_ocr")
-    if not isinstance(block, dict):
-        return True
-    v = block.get("use_tesseract", True)
     if v is False or str(v).strip().lower() in ("0", "false", "no"):
         return False
     return True
@@ -847,8 +690,8 @@ def run_vlm_serial_extract(
     image_path: Path, cfg: dict[str, Any], *, role: str | None = None
 ) -> tuple[dict[str, str], str | None]:
     """
-    Run ``scan_ocr.vlm_extract_command`` with ``{image}`` replaced by the given path (full scan or
-    a temporary ROI crop when ``scan_ocr.use_tesseract`` is false — see README).
+    Run ``scan_ocr.vlm_extract_command`` with ``{image}`` replaced by the given path (typically a
+    temporary ROI crop file produced for each ``Scans/`` region).
 
     If ``role`` is set, ``{role}`` in each argv element is replaced (e.g. ``cart_front``) so
     wrappers can tailor prompts to the scan type.
@@ -900,8 +743,8 @@ def _vlm_fields_from_cropped_rois(
     cfg: dict[str, Any],
 ) -> tuple[dict[str, str], str | None]:
     """
-    Run ``vlm_extract_command`` once per prepared ROI crop (same preprocessing as the Tesseract
-    path and as ``--ocr-dump-crops`` PNGs). ``{image}`` is each temp crop file in turn.
+    Run ``vlm_extract_command`` once per prepared ROI crop (same preprocessing as ``--ocr-dump-crops``
+    PNGs). ``{image}`` is each temp crop file in turn.
     """
     from PIL import Image
 
@@ -948,7 +791,7 @@ def _debug_tag_for_unassigned_scan(p: Path) -> str:
 
 
 def write_ocr_debug_crops(debug_dir: Path, role: str, src: Path, rois: list[tuple[float, float, float, float]], raw: str) -> None:
-    """Save per-ROI PNGs (same preprocessing as OCR / VLM crop path) plus ``{role}_raw.txt`` (Tesseract text if any)."""
+    """Save per-ROI PNGs (same preprocessing as VLM crops) plus ``{role}_raw.txt`` (optional legacy text)."""
     from PIL import Image
 
     im = Image.open(src)
@@ -980,13 +823,8 @@ def try_fill_serial_row_from_scans(
     Read serial hints from ``Scans/`` by **role** (insert spread, cart front, cart back),
     merge into serial fields (empty only), using field-specific role priority.
 
-    **Tesseract** (optional): set ``scan_ocr.use_tesseract`` to **false** and configure
-    ``scan_ocr.vlm_extract_command`` to use **only** the VLM on per-ROI crops (same crops as
-    ``--ocr-dump-crops``). When **true** (default), Tesseract runs on ROIs and the VLM receives
-    the **full** scan path unless Tesseract is unavailable (then the VLM still sees the full scan).
-
-    Optional **``scan_ocr.vlm_extract_command``**: vision helper printing JSON; merged per
-    ``vlm_fill_empty_only`` (see README).
+    Requires **``scan_ocr.vlm_extract_command``**: a vision helper argv list; each **``{image}``**
+    is a temporary ROI crop (same preprocessing as ``--ocr-dump-crops``). See README.
     """
     scans = resolve_scans_dir(release_dir)
     if scans is None:
@@ -996,18 +834,10 @@ def try_fill_serial_row_from_scans(
         return [f"ocr_scans: empty {scans.name}/"]
 
     vlm_argv = vlm_extract_command(cfg)
-    has_tess = _tesseract_on_path()
-    use_tesseract = scan_ocr_use_tesseract(cfg)
-
-    if not vlm_argv and use_tesseract and not has_tess:
+    if not vlm_argv:
         return [
-            "ocr_scans: tesseract not on PATH and no scan_ocr.vlm_extract_command — "
-            "install tesseract or add a VLM wrapper (see README)."
-        ]
-    if not vlm_argv and not use_tesseract:
-        return [
-            "ocr_scans: scan_ocr.use_tesseract is false but scan_ocr.vlm_extract_command is missing — "
-            "VLM-only mode requires a vision helper argv list (see README)."
+            "ocr_scans: set scan_ocr.vlm_extract_command in your JSON (argv with {image} and optional {role}) — "
+            "Scans/ serial reading uses a vision-model subprocess on ROI crops only; see README.",
         ]
 
     by_role: dict[str, dict[str, str]] = {}
@@ -1029,26 +859,15 @@ def try_fill_serial_row_from_scans(
         vlm_fields: dict[str, str] = {}
         vlm_err: str | None = None
         try:
-            if use_tesseract and has_tess:
-                raw = _ocr_one_image(path, rois, role, cfg)
-            if vlm_argv:
-                if not use_tesseract:
-                    vlm_fields, vlm_err = _vlm_fields_from_cropped_rois(path, rois, role, cfg)
-                else:
-                    vlm_fields, vlm_err = run_vlm_serial_extract(path, cfg, role=role)
-                if vlm_err:
-                    errors.append(f"{role} ({path.name}) vlm: {vlm_err}")
+            vlm_fields, vlm_err = _vlm_fields_from_cropped_rois(path, rois, role, cfg)
+            if vlm_err:
+                errors.append(f"{role} ({path.name}) vlm: {vlm_err}")
         except ModuleNotFoundError as e:
             name = getattr(e, "name", "") or ""
             if name == "PIL" or name.startswith("PIL."):
                 return [
                     "ocr_scans: install pillow for this interpreter "
                     f"(e.g. {sys.executable} -m pip install pillow)"
-                ]
-            if name == "pytesseract":
-                return [
-                    "ocr_scans: install pytesseract for this interpreter "
-                    f"(e.g. {sys.executable} -m pip install pytesseract)"
                 ]
             errors.append(f"{role} ({path.name}): {e}")
             continue
@@ -1058,11 +877,6 @@ def try_fill_serial_row_from_scans(
                 return [
                     "ocr_scans: install pillow for this interpreter "
                     f"(e.g. {sys.executable} -m pip install pillow)"
-                ]
-            if "pytesseract" in msg:
-                return [
-                    "ocr_scans: install pytesseract for this interpreter "
-                    f"(e.g. {sys.executable} -m pip install pytesseract)"
                 ]
             errors.append(f"{role} ({path.name}): {e}")
             continue
@@ -1090,11 +904,8 @@ def try_fill_serial_row_from_scans(
                     except OSError:
                         pass
 
-        extracted: dict[str, str] = {}
-        if (raw or "").strip():
-            extracted = extract_serial_fields_from_ocr_text_for_role(raw, role)
         extracted = merge_vlm_serial_fields(
-            extracted,
+            {},
             vlm_fields,
             fill_empty_only=vlm_fill_empty_only(cfg),
         )
@@ -1122,15 +933,7 @@ def try_fill_serial_row_from_scans(
                     debug_dir.mkdir(parents=True, exist_ok=True)
                     debug_dir_initialized = True
                 tag = _debug_tag_for_unassigned_scan(pic)
-                raw_extra = ""
-                if use_tesseract and has_tess:
-                    try:
-                        raw_extra = ocr_text_from_cart_image_path(
-                            pic, [(0.0, 1.0, 0.0, 1.0)], cfg
-                        )
-                    except Exception as ue:  # noqa: BLE001
-                        errors.append(f"{pic.name} (extra debug OCR): {ue}")
-                write_ocr_debug_crops(debug_dir, tag, pic, [(0.0, 1.0, 0.0, 1.0)], raw_extra)
+                write_ocr_debug_crops(debug_dir, tag, pic, [(0.0, 1.0, 0.0, 1.0)], "")
                 debug_note = str(debug_dir.resolve())
             except Exception as de:  # noqa: BLE001
                 errors.append(f"{pic.name} (extra debug crops): {de}")
@@ -1190,7 +993,7 @@ def format_ocr_serial_snapshot_lines(
     serial_row: dict[str, str],
     version1_rev: str | None,
 ) -> list[str]:
-    """Two-line summary of submission serial fields after OCR merge (CLI when OCR is enabled)."""
+    """Two-line summary of submission serial fields after scan merge (CLI when ``--ocr-scans``)."""
 
     def cell(key: str) -> str:
         t = (serial_row.get(key) or "").strip()

@@ -18,7 +18,6 @@
     "files": {},
     "assign_by_sorted_order": false,
     "dump_crops": false,
-    "use_tesseract": true,
     "vlm_extract_command": [
       "python3",
       "/ABS/PATH/TO/Gamecard/scripts/lmstudio_serial_extract.py",
@@ -32,7 +31,6 @@
     ],
     "vlm_timeout_seconds": 120,
     "vlm_fill_empty_only": true,
-    "vlm_debug_crops": false,
-    "tesseract_cart_config": "--oem 3 --psm 6"
+    "vlm_debug_crops": false
   }
 }

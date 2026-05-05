@@ -83,6 +83,7 @@ def prompt_insert_spread_box_barcode_only() -> str:
     return (
         common
         + "This image is a **retail insert** scan crop.\n"
+        + "**Ignore the HAC-P-** retail catalog line for this task — only read the **barcode** digit row.\n"
         + "**box_barcode** — Read the numbers below the retail **barcode**\n"
         + "Often printed with spaces between digit groups, like **1 22222 33333 4**; **keep spaces**, and remember to include the control check digit. \n"
         + "Set media_serial1, media_serial2, box_serial, and pcb_serial to \"\".\n"

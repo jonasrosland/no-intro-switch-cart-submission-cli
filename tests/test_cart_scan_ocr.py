@@ -1,4 +1,4 @@
-"""Tests for optional ``Scans/`` OCR helpers (no real ROM or scan binaries in git)."""
+"""Tests for optional ``Scans/`` scan helpers (ROI crops + VLM JSON; no real ROM in git)."""
 
 from __future__ import annotations
 
@@ -27,8 +27,6 @@ from no_intro_switch_cart_submission_cli.cart_scan_ocr import (
     run_vlm_serial_extract,
     scan_ocr_rois_for_role,
     scan_ocr_rois_from_cfg,
-    scan_ocr_use_tesseract,
-    tesseract_cart_config,
     try_fill_serial_row_from_scans,
     try_fill_serial_row_from_scans_for_cli,
     vlm_debug_crops_requested,
@@ -247,16 +245,6 @@ class ScanOcrRoisFromCfg(unittest.TestCase):
         self.assertEqual(scan_ocr_rois_for_role({}, "cart_back"), list(DEFAULT_CART_BACK_OCR_ROIS))
         self.assertEqual(len(DEFAULT_CART_BACK_OCR_ROIS), 1)
 
-    def test_tesseract_cart_config_default_and_override(self) -> None:
-        self.assertEqual(tesseract_cart_config(None), "--oem 3 --psm 6")
-        self.assertEqual(tesseract_cart_config({}), "--oem 3 --psm 6")
-        self.assertEqual(
-            tesseract_cart_config(
-                {"scan_ocr": {"tesseract_cart_config": "  --oem 3 --psm 7  "}}
-            ),
-            "--oem 3 --psm 7",
-        )
-
     def test_rois_by_role_override(self) -> None:
         cfg = {
             "scan_ocr": {
@@ -376,16 +364,6 @@ class MergeOcrIntoSerialRow(unittest.TestCase):
         self.assertEqual(set(filled), {"media_serial2", "box_serial", "box_barcode", "pcb_serial"})
 
 
-class ScanOcrUseTesseract(unittest.TestCase):
-    def test_defaults_true(self) -> None:
-        self.assertTrue(scan_ocr_use_tesseract({}))
-        self.assertTrue(scan_ocr_use_tesseract({"scan_ocr": {}}))
-
-    def test_false_when_disabled_in_config(self) -> None:
-        self.assertFalse(scan_ocr_use_tesseract({"scan_ocr": {"use_tesseract": False}}))
-        self.assertFalse(scan_ocr_use_tesseract({"scan_ocr": {"use_tesseract": "no"}}))
-
-
 class VlmExtractHelpers(unittest.TestCase):
     def test_merge_vlm_fill_empty_only(self) -> None:
         ex = {"box_serial": "", "box_barcode": "6 59048 99044 8"}
@@ -431,7 +409,7 @@ class VlmExtractHelpers(unittest.TestCase):
 
 
 class TryFillFromScansMocked(unittest.TestCase):
-    def test_fills_when_ocr_returns_blob(self) -> None:
+    def test_fills_from_vlm_fields_on_insert(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             tmp_path = Path(td)
             game = tmp_path / "G"
@@ -439,40 +417,35 @@ class TryFillFromScansMocked(unittest.TestCase):
             scans = game / "Scans"
             ver.mkdir(parents=True)
             scans.mkdir()
-            # Content unused while OCR is mocked (real runs need a valid image Pillow can open).
             (scans / "scan.png").write_bytes(b"\x89PNG\r\n\x1a\n")
             row = {k: "" for k in ("media_serial1", "media_serial2", "box_serial", "box_barcode", "pcb_serial")}
-            fake = (
-                "HAC-P-AT5VA\n"
-                "TSA-HAC-AT5VA-UKV\n"
-                "LA-H-AS7TA-UKV\n"
-                "6 59048 99044 8\n"
-            )
             cfg = {
                 "scan_ocr": {
-                    "files": {
-                        "insert_spread": "scan.png",
-                    }
+                    "files": {"insert_spread": "scan.png"},
+                    "vlm_extract_command": ["true"],
                 }
             }
             with patch(
-                "no_intro_switch_cart_submission_cli.cart_scan_ocr._tesseract_on_path",
-                return_value=True,
-            ), patch(
-                "no_intro_switch_cart_submission_cli.cart_scan_ocr._ocr_one_image",
-                return_value=fake,
+                "no_intro_switch_cart_submission_cli.cart_scan_ocr._vlm_fields_from_cropped_rois",
+                return_value=(
+                    {
+                        "box_serial": "HAC-P-AT5VA",
+                        "box_barcode": "6 59048 99044 8",
+                        "media_serial1": "LA-H-SHOULD-NOT-WIN",
+                    },
+                    None,
+                ),
             ):
                 msgs = try_fill_serial_row_from_scans(ver, row, cfg)
             self.assertTrue(any("filled" in m for m in msgs))
             self.assertEqual(row["box_serial"], "HAC-P-AT5VA")
+            self.assertEqual(row["box_barcode"], "6 59048 99044 8")
             self.assertEqual(row.get("media_serial1", ""), "")
             self.assertEqual(row.get("media_serial2", ""), "")
 
-    def test_vlm_only_without_tesseract_fills_from_echo(self) -> None:
-        """use_tesseract false: wiring calls crop-based VLM path (Pillow mocked away)."""
+    def test_vlm_fill_empty_only_false_on_insert(self) -> None:
         with tempfile.TemporaryDirectory() as td:
-            tmp_path = Path(td)
-            game = tmp_path / "G"
+            game = Path(td) / "G"
             ver = game / "1.0"
             scans = game / "Scans"
             ver.mkdir(parents=True)
@@ -484,16 +457,12 @@ class TryFillFromScansMocked(unittest.TestCase):
             }
             cfg = {
                 "scan_ocr": {
-                    "use_tesseract": False,
                     "vlm_fill_empty_only": False,
                     "files": {"insert_spread": "scan.png"},
                     "vlm_extract_command": ["true"],
                 }
             }
             with patch(
-                "no_intro_switch_cart_submission_cli.cart_scan_ocr._tesseract_on_path",
-                return_value=False,
-            ), patch(
                 "no_intro_switch_cart_submission_cli.cart_scan_ocr._vlm_fields_from_cropped_rois",
                 return_value=({"box_serial": "HAC-P-VLMONLY"}, None),
             ) as vlm_mock:
@@ -502,48 +471,40 @@ class TryFillFromScansMocked(unittest.TestCase):
         self.assertTrue(any("filled" in m for m in msgs), msg=msgs)
         self.assertEqual(row.get("box_serial"), "HAC-P-VLMONLY")
 
-    def test_vlm_only_missing_extract_command_errors(self) -> None:
+    def test_missing_vlm_extract_command_errors(self) -> None:
         with tempfile.TemporaryDirectory() as td:
-            tmp_path = Path(td)
-            game = tmp_path / "G"
+            game = Path(td) / "G"
             ver = game / "1.0"
             scans = game / "Scans"
             ver.mkdir(parents=True)
             scans.mkdir()
             (scans / "x.png").write_bytes(b"\x89PNG\r\n\x1a\n")
             row = {k: "" for k in ("media_serial1", "media_serial2", "box_serial", "box_barcode", "pcb_serial")}
-            msgs = try_fill_serial_row_from_scans(ver, row, {"scan_ocr": {"use_tesseract": False}})
-        self.assertTrue(any("use_tesseract is false" in m for m in msgs))
+            msgs = try_fill_serial_row_from_scans(ver, row, {"scan_ocr": {}})
+        joined = " ".join(msgs)
+        self.assertIn("vlm_extract_command", joined)
 
     def test_dump_crops_prepends_debug_line(self) -> None:
         with tempfile.TemporaryDirectory() as td:
-            tmp_path = Path(td)
-            game = tmp_path / "G"
+            game = Path(td) / "G"
             ver = game / "1.0"
             scans = game / "Scans"
             ver.mkdir(parents=True)
             scans.mkdir()
             (scans / "scan.png").write_bytes(b"\x89PNG\r\n\x1a\n")
             row = {k: "" for k in ("media_serial1", "media_serial2", "box_serial", "box_barcode", "pcb_serial")}
-            fake = (
-                "HAC-P-AT5VA\n"
-                "TSA-HAC-AT5VA-UKV\n"
-                "LA-H-AS7TA-UKV\n"
-                "6 59048 99044 8\n"
-            )
             cfg = {
                 "scan_ocr": {
-                    "files": {
-                        "insert_spread": "scan.png",
-                    }
+                    "files": {"insert_spread": "scan.png"},
+                    "vlm_extract_command": ["true"],
                 }
             }
             with patch(
-                "no_intro_switch_cart_submission_cli.cart_scan_ocr._tesseract_on_path",
-                return_value=True,
-            ), patch(
-                "no_intro_switch_cart_submission_cli.cart_scan_ocr._ocr_one_image",
-                return_value=fake,
+                "no_intro_switch_cart_submission_cli.cart_scan_ocr._vlm_fields_from_cropped_rois",
+                return_value=(
+                    {"box_serial": "HAC-P-AT5VA", "box_barcode": "6 59048 99044 8"},
+                    None,
+                ),
             ), patch(
                 "no_intro_switch_cart_submission_cli.cart_scan_ocr.write_ocr_debug_crops",
             ) as w:
@@ -552,8 +513,8 @@ class TryFillFromScansMocked(unittest.TestCase):
             self.assertTrue(any("filled" in m for m in msgs))
             w.assert_called_once()
 
-    def test_dump_crops_written_when_cart_ocr_raises(self) -> None:
-        """Debug dumps must still be produced for cart roles even if Tesseract path raises."""
+    def test_dump_crops_written_when_vlm_raises(self) -> None:
+        """Debug dumps must still be produced for cart roles even if the VLM crop path raises."""
         with tempfile.TemporaryDirectory() as td:
             ver = Path(td) / "1.0"
             scans = Path(td) / "Scans"
@@ -561,13 +522,15 @@ class TryFillFromScansMocked(unittest.TestCase):
             scans.mkdir()
             (scans / "cart.png").write_bytes(b"\x89PNG\r\n\x1a\n")
             row = {k: "" for k in ("media_serial1", "media_serial2", "box_serial", "box_barcode", "pcb_serial")}
-            cfg = {"scan_ocr": {"files": {"cart_front": "cart.png"}}}
+            cfg = {
+                "scan_ocr": {
+                    "files": {"cart_front": "cart.png"},
+                    "vlm_extract_command": ["true"],
+                }
+            }
             with patch(
-                "no_intro_switch_cart_submission_cli.cart_scan_ocr._tesseract_on_path",
-                return_value=True,
-            ), patch(
-                "no_intro_switch_cart_submission_cli.cart_scan_ocr._ocr_one_image",
-                side_effect=RuntimeError("tesseract boom"),
+                "no_intro_switch_cart_submission_cli.cart_scan_ocr._vlm_fields_from_cropped_rois",
+                side_effect=RuntimeError("vlm boom"),
             ), patch(
                 "no_intro_switch_cart_submission_cli.cart_scan_ocr.write_ocr_debug_crops",
             ) as w:
@@ -584,13 +547,15 @@ class TryFillFromScansMocked(unittest.TestCase):
             (scans / "insert_only.png").write_bytes(b"\x89PNG\r\n\x1a\n")
             (scans / "orphan.png").write_bytes(b"\x89PNG\r\n\x1a\n")
             row = {k: "" for k in ("media_serial1", "media_serial2", "box_serial", "box_barcode", "pcb_serial")}
-            cfg = {"scan_ocr": {"files": {"insert_spread": "insert_only.png"}}}
+            cfg = {
+                "scan_ocr": {
+                    "files": {"insert_spread": "insert_only.png"},
+                    "vlm_extract_command": ["true"],
+                }
+            }
             with patch(
-                "no_intro_switch_cart_submission_cli.cart_scan_ocr._tesseract_on_path",
-                return_value=True,
-            ), patch(
-                "no_intro_switch_cart_submission_cli.cart_scan_ocr._ocr_one_image",
-                return_value="x",
+                "no_intro_switch_cart_submission_cli.cart_scan_ocr._vlm_fields_from_cropped_rois",
+                return_value=({"box_serial": "HAC-P-X"}, None),
             ), patch(
                 "no_intro_switch_cart_submission_cli.cart_scan_ocr.write_ocr_debug_crops",
             ) as w:

@@ -95,9 +95,8 @@ def main() -> int:
         help=(
             "After config/CLI serial fields, fill any still-empty media_serial1, media_serial2, box_serial, "
             "box_barcode, and pcb_serial from Scans/ (insert spread, cart front/back; see README). "
-            "Optional scan_ocr.vlm_extract_command merges a vision model's JSON; set scan_ocr.use_tesseract "
-            "to false for VLM-only on ROI crops (no Tesseract). "
-            "Requires Pillow for crops; with use_tesseract true (default), also pytesseract and tesseract on PATH."
+            "Requires scan_ocr.vlm_extract_command (vision-model argv with {image} and optional {role}) "
+            "and Pillow for ROI crops."
         ),
     )
     ap.add_argument(
@@ -105,10 +104,10 @@ def main() -> int:
         dest="ocr_dump_crops",
         action="store_true",
         help=(
-            "With OCR enabled, write each ROI crop (PNG) and raw Tesseract text per role under "
-            "<release>/_ocr_crop_debug/ (insert spread, cart front/back — same layout for all roles) "
-            "and print that path. "
-            "If Tesseract raises for a role, crops are still written when possible and "
+            "With scan processing enabled, write each ROI crop (PNG) per role under "
+            "<release>/_ocr_crop_debug/ and print that path. "
+            "<role>_raw.txt is left empty (legacy field). "
+            "If the VLM/crop step raises for a role, crops are still written when possible and "
             "<role>_ocr_exception.txt records the error. Remove the folder after debugging. "
             "No effect without --ocr-scans or configuration OCR enabled."
         ),
@@ -118,7 +117,7 @@ def main() -> int:
         dest="vlm_debug_crops",
         action="store_true",
         help=(
-            "After normal scan OCR/VLM, run ``scan_ocr.vlm_extract_command`` again on "
+            "After scan VLM on full images, run ``scan_ocr.vlm_extract_command`` again on "
             "``<release>/_ocr_crop_debug/<role>_r0.png`` for insert_spread, cart_front, and "
             "cart_back, and merge the JSON into the serial row (same rules as ``vlm_fill_empty_only``). "
             "No effect unless that argv list is set in the configuration file (same as live-scan VLM). "
