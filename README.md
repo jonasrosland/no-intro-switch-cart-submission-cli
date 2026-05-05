@@ -229,6 +229,21 @@ docker run --rm \
 
 Adjust **`--root`** to your layout. **`--dry-run`** resolves metadata and runs **`--ocr-scans`** when enabled, but does not hash or write XML.
 
+## Verify ``Scans/`` VLM output against an existing submission
+
+After you have a ``* Submission.xml`` and the same **``Scans/``** layout used for OCR, you can re-run the VLM pipeline into a blank serial row and compare to the XML (same ``scan_ocr.vlm_extract_command`` as normal runs):
+
+```bash
+python3 -m no_intro_switch_cart_submission_cli.verify_scans_xml \
+  --config no_intro_submit.json \
+  --submission-xml "games/Cyber Shadow/1.0.5/Cyber Shadow - v16 - dumper - 2026-04-28 Submission.xml" \
+  --release-dir "games/Cyber Shadow/1.0.5"
+```
+
+**``--release-dir``** is the version folder next to (or containing) **``Scans/``** — the same directory the main CLI uses as the release folder. If omitted, the XML file’s parent directory is used.
+
+By default (**``--compare stored``**), only fields that are **non-empty in the XML** must match the VLM (so you can check a partial submission). Use **``--compare all``** to require every serial field to match, including empty-in-XML vs non-empty VLM. Exit code **``1``** on mismatch, **``0``** when comparison passes.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
