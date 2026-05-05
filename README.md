@@ -160,26 +160,17 @@ Unknown keys are ignored. Trailing prose is tolerated if the first ``{`` starts 
 - **`vlm_timeout_seconds`** (default **120**) — subprocess timeout **per** VLM invocation (each ROI crop is a separate run).
 - **`vlm_fill_empty_only`** (default **true**) — only fill keys still empty after earlier steps (including prior ROI passes for that role); set **`false`** so each VLM response can overwrite non-empty values for keys it returns.
 
-**Python / Hugging Face (e.g. SmolVLM, no Ollama):** install **`pip install -r requirements-vlm.txt`**, then point **`vlm_extract_command`** at **`scripts/smolvlm_serial_extract.py`** (absolute path). Pass **`--role {role}`** so the helper only asks for fields that exist on that scan (**`cart_front`** → **`media_serial1`** only, etc.). Default model is **`HuggingFaceTB/SmolVLM-256M-Instruct`**. Example::
-
-    "vlm_extract_command": [
-      "python3", "/ABS/PATH/TO/Gamecard/scripts/smolvlm_serial_extract.py",
-      "--model", "HuggingFaceTB/SmolVLM-256M-Instruct",
-      "--role", "{role}",
-      "{image}"
-    ]
-
-**LM Studio (OpenAI-compatible server, e.g. on a LAN GPU):** no PyTorch in the submission venv — only stdlib **`urllib`**. Start the **local server** in LM Studio, then point **`vlm_extract_command`** at **`scripts/lmstudio_serial_extract.py`** with **`--base-url`** (must include the **`/v1`** suffix, e.g. **`http://10.1.1.110:1234/v1`**) and **`--model`** set to the exact id LM Studio shows for the loaded checkpoint (example below uses **`smolvlm2-2.2b-instruct`**). Omit **`--model`** to pick the **first** id from **`GET /v1/models`** when only one model is loaded. Example (adjust the script path and model id if yours differs)::
+**Bundled helper — LM Studio (OpenAI-compatible server, e.g. on a LAN GPU):** no PyTorch in the submission venv — only stdlib **`urllib`**. Start the **local server** in LM Studio, then point **`vlm_extract_command`** at **`scripts/lmstudio_serial_extract.py`** with **`--base-url`** (must include the **`/v1`** suffix, e.g. **`http://10.1.1.110:1234/v1`**) and **`--model`** set to the exact id LM Studio shows for the loaded checkpoint. Omit **`--model`** to pick the **first** id from **`GET /v1/models`** when only one model is loaded. Pass **`--role {role}`** so the helper only asks for fields that exist on that scan (**`cart_front`** → **`media_serial1`** only, etc.). Example (replace paths, URL, and model id)::
 
     "vlm_extract_command": [
       "python3", "/ABS/PATH/TO/Gamecard/scripts/lmstudio_serial_extract.py",
       "--base-url", "http://10.1.1.110:1234/v1",
-      "--model", "smolvlm2-2.2b-instruct",
+      "--model", "your-model-id-from-lm-studio",
       "--role", "{role}",
       "{image}"
     ]
 
-For **`cart_back`**, the script may issue **one extra** HTTP request when the first reply leaves **both** **`media_serial2`** and **`pcb_serial`** empty (small VLMs are flaky). Pass **`--no-retry-on-empty`** in **`vlm_extract_command`** to disable that. For **`insert_spread`**, **`lmstudio_serial_extract.py`** and **`smolvlm_serial_extract.py`** send **two** requests per crop (**`box_serial`**, then **`box_barcode`**) and may send **one** more to retry **`box_serial`** when it is still invalid; pass **`--no-retry-on-insert-box`** to disable that retry. Allow enough **`vlm_timeout_seconds`** for **three** HTTP round-trips on **insert** crops when retries are enabled (two passes minimum).
+For **`cart_back`**, the script may issue **one extra** HTTP request when the first reply leaves **both** **`media_serial2`** and **`pcb_serial`** empty (small VLMs are flaky). Pass **`--no-retry-on-empty`** in **`vlm_extract_command`** to disable that. For **`insert_spread`**, **`lmstudio_serial_extract.py`** sends **two** requests per crop (**`box_serial`**, then **`box_barcode`**) and may send **one** more to retry **`box_serial`** when it is still invalid; pass **`--no-retry-on-insert-box`** to disable that retry. Allow enough **`vlm_timeout_seconds`** for **three** HTTP round-trips on **insert** crops when retries are enabled (two passes minimum).
 
 **OlmOCR and other document VLMs:** any wrapper that accepts an image path, runs your model (e.g. [allenai OlmOCR](https://github.com/allenai/olmocr)), and prints **one JSON object** on stdout with the keys above can be listed in **`vlm_extract_command`** the same way — use **`{image}`** / **`{role}`** placeholders like the bundled scripts.
 

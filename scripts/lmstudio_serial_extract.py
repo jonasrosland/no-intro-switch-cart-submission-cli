@@ -9,7 +9,7 @@ Example ``scan_ocr`` block::
     "vlm_extract_command": [
       "python3", "/ABS/PATH/TO/Gamecard/scripts/lmstudio_serial_extract.py",
       "--base-url", "http://10.1.1.110:1234/v1",
-      "--model", "smolvlm2-2.2b-instruct",
+      "--model", "your-model-id-from-lm-studio",
       "--role", "{role}",
       "{image}"
     ]
@@ -17,7 +17,7 @@ Example ``scan_ocr`` block::
 If ``--model`` is omitted, the first model id from ``GET {base-url}/models`` is used (single loaded model).
 
 For ``--role cart_back`` only: if both ``media_serial2`` and ``pcb_serial`` are empty after the first
-reply (common SmolVLM2 flake), the script sends **one** follow-up request with a shorter nudge
+reply (common small-VLM flake), the script sends **one** follow-up request with a shorter nudge
 prompt unless ``--no-retry-on-empty`` is set.
 
 For ``--role insert_spread`` the script sends **two** requests per image (``box_serial`` then ``box_barcode``)

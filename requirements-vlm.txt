@@ -1,6 +1,0 @@
-# Optional: SmolVLM (or other HF VLMs) for scan_ocr.vlm_extract_command — not used by default CI / Docker image.
-# Install on the machine that runs OCR: pip install -r requirements-vlm.txt
-torch>=2.2.0,<3
-transformers>=4.46.0,<5
-accelerate>=0.33.0
-safetensors>=0.4.0

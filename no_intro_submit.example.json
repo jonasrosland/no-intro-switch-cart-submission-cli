@@ -24,7 +24,7 @@
       "--base-url",
       "http://10.1.1.110:1234/v1",
       "--model",
-      "smolvlm2-2.2b-instruct",
+      "your-model-id-from-lm-studio",
       "--role",
       "{role}",
       "{image}"

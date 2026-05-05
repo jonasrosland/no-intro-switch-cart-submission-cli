@@ -1,5 +1,5 @@
 """
-Shared prompts and post-processing for cart scan VLM helpers (SmolVLM, LM Studio, etc.).
+Shared prompts and post-processing for cart scan VLM helpers (e.g. LM Studio HTTP client).
 """
 
 from __future__ import annotations
@@ -127,7 +127,7 @@ def prompt_for_role(role: str | None) -> str:
             + "Set media_serial1, box_serial, and box_barcode to empty strings **\"\"**.\n"
         )
     if role == "insert_spread":
-        # LM Studio / SmolVLM use **two** separate prompts per insert image (see those scripts).
+        # Insert uses **two** separate prompts per image in ``lmstudio_serial_extract.py``.
         return prompt_insert_spread_box_serial_only()
     return (
         common
@@ -338,7 +338,7 @@ def parse_insert_spread_prose(text: str) -> dict[str, Any] | None:
 
 def parse_relaxed_key_line_format(text: str) -> dict[str, Any] | None:
     """
-    Some VLMs (e.g. SmolVLM2 in LM Studio) answer with labeled lines instead of JSON::
+    Some VLMs answer with labeled lines instead of JSON::
 
         media_serial1: LA-H-AT5VA-EUR
 
