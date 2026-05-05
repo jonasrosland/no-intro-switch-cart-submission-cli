@@ -145,8 +145,6 @@ Expect **up to three** photos per title (names or `scan_ocr.files` in the config
 
 Enable with **`"ocr_scans": true`**, **`"scan_ocr": { "enabled": true, … }`**, or **`--ocr-scans`**. **`--ocr-dump-crops`** (or **`"scan_ocr": { "dump_crops": true }`**) writes each ROI crop to **`<release folder>/_ocr_crop_debug/`** (and **`{role}_raw.txt`** as an empty legacy slot); delete that folder when done.
 
-With **`vlm_extract_command`** set, **`--vlm-debug-crops`** (or **`"scan_ocr": { "vlm_debug_crops": true }`**) runs that command again on each role’s **`<role>_r0.png`** under **`_ocr_crop_debug/`** (first ROI) and merges the JSON into the serial row using the same **`vlm_fill_empty_only`** rules. Use after you have debug crops (e.g. from a prior **`--ocr-dump-crops`** run). Allow enough **`vlm_timeout_seconds`** for **three** extra subprocess invocations when this is enabled.
-
 **`Scans/`** next to the **version** folder is preferred (e.g. `Dumps/Cyber Shadow/Scans/` next to `…/1.0.5/`); otherwise **`Scans/`** inside the release folder is used.
 
 #### VLM hook (`vlm_extract_command`)
@@ -240,7 +238,7 @@ python3 -m no_intro_switch_cart_submission_cli.verify_scans_xml \
   --release-dir "games/Cyber Shadow/1.0.5"
 ```
 
-The same **``--submission-xml``**, **``--release-dir``**, and **``--compare``** options work on **``no_intro_batch_submit.py``** (and **``python -m no_intro_switch_cart_submission_cli.cli``**): when **``--submission-xml``** is set, the program runs verify only and exits (**``--root``** is ignored). You may add **``--ocr-dump-crops``** and/or **``--vlm-debug-crops``** on the same invocation (same behavior as the main batch tool).
+The same **``--submission-xml``**, **``--release-dir``**, and **``--compare``** options work on **``no_intro_batch_submit.py``** (and **``python -m no_intro_switch_cart_submission_cli.cli``**): when **``--submission-xml``** is set, the program runs verify only and exits (**``--root``** is ignored). You may add **``--ocr-dump-crops``** on the same invocation (same behavior as the main batch tool).
 
 **Shell (zsh/bash):** for a command split across lines, the backslash must be the **last character** on the line — **no space after** **`\`**. A stray **`\ `** breaks continuation so the next line may run as a new command (e.g. **``command not found: --submission-xml``**).
 

@@ -33,9 +33,7 @@ from no_intro_switch_cart_submission_cli.nstool_stdout import parse_cup_metadata
 from no_intro_switch_cart_submission_cli.cart_scan_ocr import (
     format_ocr_serial_snapshot_lines,
     ocr_scans_enabled,
-    run_vlm_on_ocr_crop_debug_for_cli,
     try_fill_serial_row_from_scans_for_cli,
-    vlm_debug_crops_requested,
 )
 from no_intro_switch_cart_submission_cli.xml_build import build_xml, safe_filename_segment
 
@@ -113,19 +111,6 @@ def main() -> int:
         ),
     )
     ap.add_argument(
-        "--vlm-debug-crops",
-        dest="vlm_debug_crops",
-        action="store_true",
-        help=(
-            "After scan VLM on full images, run ``scan_ocr.vlm_extract_command`` again on "
-            "``<release>/_ocr_crop_debug/<role>_r0.png`` for insert_spread, cart_front, and "
-            "cart_back, and merge the JSON into the serial row (same rules as ``vlm_fill_empty_only``). "
-            "No effect unless that argv list is set in the configuration file (same as live-scan VLM). "
-            "Requires ROI crops from a prior ``--ocr-dump-crops`` run (or ``scan_ocr.dump_crops``). "
-            "Can also be enabled with ``\"scan_ocr\": { \"vlm_debug_crops\": true }`` in the configuration file."
-        ),
-    )
-    ap.add_argument(
         "--submission-xml",
         type=Path,
         default=None,
@@ -133,8 +118,8 @@ def main() -> int:
         help=(
             "Verify mode: compare this * Submission.xml to a fresh Scans/ VLM fill, then exit "
             "(same behavior as python -m no_intro_switch_cart_submission_cli.verify_scans_xml). "
-            "Does not scan --root or write XML. Optional --ocr-dump-crops / --vlm-debug-crops apply "
-            "to the verify run the same way as in batch mode."
+            "Does not scan --root or write XML. Optional --ocr-dump-crops writes ROI debug PNGs "
+            "during the verify run (same as batch mode)."
         ),
     )
     ap.add_argument(
@@ -165,8 +150,6 @@ def main() -> int:
             args.release_dir,
             args.compare,
             dump_roi_crops=bool(args.ocr_dump_crops),
-            vlm_debug_crops=bool(args.vlm_debug_crops),
-            config_path_for_debug=args.config,
         )
 
     cfg = load_config(args.config)
@@ -325,11 +308,6 @@ def main() -> int:
         serial_row = apply_cli_serial_overrides(args, serial_row)
         for ocr_ln in try_fill_serial_row_from_scans_for_cli(rel.directory, serial_row, cfg, args):
             print(f"  {ocr_ln}")
-        if vlm_debug_crops_requested(cfg, args):
-            for vlm_ln in run_vlm_on_ocr_crop_debug_for_cli(
-                rel.directory, serial_row, cfg, args, config_path=args.config
-            ):
-                print(f"  {vlm_ln}")
         fill_gameid2_from_media_serial1_if_empty(serial_row)
         if args.version1 is not None:
             v1s = args.version1.strip()

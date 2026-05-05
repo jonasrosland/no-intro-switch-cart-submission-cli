@@ -23,13 +23,11 @@ from no_intro_switch_cart_submission_cli.cart_scan_ocr import (
     merge_vlm_serial_fields,
     ocr_scans_enabled,
     resolve_scans_dir,
-    run_vlm_on_ocr_crop_debug_for_cli,
     run_vlm_serial_extract,
     scan_ocr_rois_for_role,
     scan_ocr_rois_from_cfg,
     try_fill_serial_row_from_scans,
     try_fill_serial_row_from_scans_for_cli,
-    vlm_debug_crops_requested,
 )
 from no_intro_switch_cart_submission_cli.constants import SERIAL_FIELDS
 
@@ -570,80 +568,6 @@ class TryFillFromScansMocked(unittest.TestCase):
             args = SimpleNamespace(ocr_scans=False)
             msgs = try_fill_serial_row_from_scans_for_cli(Path(td), row, {}, args)
             self.assertEqual(msgs, [])
-
-
-class VlmDebugCropsCli(unittest.TestCase):
-    def test_requested_from_cli_flag(self) -> None:
-        args = SimpleNamespace(vlm_debug_crops=True)
-        self.assertTrue(vlm_debug_crops_requested({}, args))
-
-    def test_requested_from_config(self) -> None:
-        args = SimpleNamespace(vlm_debug_crops=False)
-        self.assertTrue(vlm_debug_crops_requested({"scan_ocr": {"vlm_debug_crops": True}}, args))
-
-    def test_not_requested(self) -> None:
-        args = SimpleNamespace(vlm_debug_crops=False)
-        self.assertFalse(vlm_debug_crops_requested({}, args))
-
-    def test_skipped_no_vlm_command(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            row = {k: "" for k in SERIAL_FIELDS}
-            cfg_path = Path(td) / "cfg.json"
-            cfg_path.write_text("{}", encoding="utf-8")
-            lines = run_vlm_on_ocr_crop_debug_for_cli(
-                Path(td),
-                row,
-                {},
-                SimpleNamespace(vlm_debug_crops=True),
-                config_path=cfg_path,
-            )
-        self.assertEqual(len(lines), 1)
-        self.assertIn("vlm_debug_crops: skipped", lines[0])
-        self.assertIn("vlm_extract_command", lines[0])
-        self.assertIn(str(cfg_path.resolve()), lines[0])
-
-    def test_skipped_no_debug_dir(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            rel = Path(td) / "1.0"
-            rel.mkdir()
-            row = {k: "" for k in SERIAL_FIELDS}
-            cfg = {"scan_ocr": {"vlm_extract_command": ["noop", "{role}", "{image}"]}}
-            lines = run_vlm_on_ocr_crop_debug_for_cli(
-                rel, row, cfg, SimpleNamespace(vlm_debug_crops=True)
-            )
-        self.assertTrue(lines[0].startswith("vlm_debug_crops: skipped"))
-
-    @patch("no_intro_switch_cart_submission_cli.cart_scan_ocr.run_vlm_serial_extract")
-    def test_merge_three_roles(self, mock_run) -> None:
-        def se(path: Path, cfg, role=None):
-            if role == "insert_spread":
-                return ({"box_serial": "HAC-P-ATSVA", "box_barcode": "659084990448"}, None)
-            if role == "cart_front":
-                return ({"media_serial1": "LA-H-TEST-EUR"}, None)
-            return ({"media_serial2": "AT5VA20B0053G", "pcb_serial": "\u25bc 10"}, None)
-
-        mock_run.side_effect = se
-        with tempfile.TemporaryDirectory() as td:
-            rel = Path(td) / "1.0"
-            dbg = rel / "_ocr_crop_debug"
-            dbg.mkdir(parents=True)
-            for role in ("insert_spread", "cart_front", "cart_back"):
-                (dbg / f"{role}_r0.png").write_bytes(b"\x89PNG\r\n\x1a\n")
-            row = {k: "" for k in SERIAL_FIELDS}
-            cfg = {
-                "scan_ocr": {
-                    "vlm_extract_command": ["noop", "{role}", "{image}"],
-                    "vlm_fill_empty_only": True,
-                }
-            }
-            args = SimpleNamespace(vlm_debug_crops=True)
-            lines = run_vlm_on_ocr_crop_debug_for_cli(rel, row, cfg, args)
-        self.assertEqual(len(lines), 3)
-        self.assertEqual(row["box_serial"], "HAC-P-ATSVA")
-        self.assertEqual(row["box_barcode"], "659084990448")
-        self.assertEqual(row["media_serial1"], "LA-H-TEST-EUR")
-        self.assertEqual(row["media_serial2"], "AT5VA20B0053G")
-        self.assertEqual(row["pcb_serial"], "\u25bc 10")
 
 
 if __name__ == "__main__":

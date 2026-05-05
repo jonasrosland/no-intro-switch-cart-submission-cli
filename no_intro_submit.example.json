@@ -30,7 +30,6 @@
       "{image}"
     ],
     "vlm_timeout_seconds": 120,
-    "vlm_fill_empty_only": true,
-    "vlm_debug_crops": false
+    "vlm_fill_empty_only": true
   }
 }
