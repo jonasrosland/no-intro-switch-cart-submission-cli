@@ -325,10 +325,11 @@ def main() -> int:
         serial_row = apply_cli_serial_overrides(args, serial_row)
         for ocr_ln in try_fill_serial_row_from_scans_for_cli(rel.directory, serial_row, cfg, args):
             print(f"  {ocr_ln}")
-        for vlm_ln in run_vlm_on_ocr_crop_debug_for_cli(
-            rel.directory, serial_row, cfg, args, config_path=args.config
-        ):
-            print(f"  {vlm_ln}")
+        if vlm_debug_crops_requested(cfg, args):
+            for vlm_ln in run_vlm_on_ocr_crop_debug_for_cli(
+                rel.directory, serial_row, cfg, args, config_path=args.config
+            ):
+                print(f"  {vlm_ln}")
         fill_gameid2_from_media_serial1_if_empty(serial_row)
         if args.version1 is not None:
             v1s = args.version1.strip()
