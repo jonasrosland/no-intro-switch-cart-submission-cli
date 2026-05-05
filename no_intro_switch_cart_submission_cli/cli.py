@@ -133,7 +133,8 @@ def main() -> int:
         help=(
             "Verify mode: compare this * Submission.xml to a fresh Scans/ VLM fill, then exit "
             "(same behavior as python -m no_intro_switch_cart_submission_cli.verify_scans_xml). "
-            "Does not scan --root or write XML."
+            "Does not scan --root or write XML. Optional --ocr-dump-crops / --vlm-debug-crops apply "
+            "to the verify run the same way as in batch mode."
         ),
     )
     ap.add_argument(
@@ -163,6 +164,9 @@ def main() -> int:
             args.submission_xml,
             args.release_dir,
             args.compare,
+            dump_roi_crops=bool(args.ocr_dump_crops),
+            vlm_debug_crops=bool(args.vlm_debug_crops),
+            config_path_for_debug=args.config,
         )
 
     cfg = load_config(args.config)

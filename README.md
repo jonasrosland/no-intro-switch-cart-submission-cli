@@ -240,7 +240,9 @@ python3 -m no_intro_switch_cart_submission_cli.verify_scans_xml \
   --release-dir "games/Cyber Shadow/1.0.5"
 ```
 
-The same **``--submission-xml``**, **``--release-dir``**, and **``--compare``** options work on **``no_intro_batch_submit.py``** (and **``python -m no_intro_switch_cart_submission_cli.cli``**): when **``--submission-xml``** is set, the program runs verify only and exits (**``--root``** is ignored).
+The same **``--submission-xml``**, **``--release-dir``**, and **``--compare``** options work on **``no_intro_batch_submit.py``** (and **``python -m no_intro_switch_cart_submission_cli.cli``**): when **``--submission-xml``** is set, the program runs verify only and exits (**``--root``** is ignored). You may add **``--ocr-dump-crops``** and/or **``--vlm-debug-crops``** on the same invocation (same behavior as the main batch tool).
+
+**Shell (zsh/bash):** for a command split across lines, the backslash must be the **last character** on the line — **no space after** **`\`**. A stray **`\ `** breaks continuation so the next line may run as a new command (e.g. **``command not found: --submission-xml``**).
 
 **``--release-dir``** is the version folder next to (or containing) **``Scans/``** — the same directory the main CLI uses as the release folder. If omitted, the XML file’s parent directory is used.
 

@@ -8,6 +8,8 @@ configuration file). Example::
       --config no_intro_submit.json \\
       --submission-xml /abs/path/to/Submission.xml \\
       --release-dir path/to/version-folder
+
+Optional: ``--ocr-dump-crops``, ``--vlm-debug-crops`` (same as the main CLI).
 """
 
 from __future__ import annotations
@@ -16,14 +18,18 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 from no_intro_switch_cart_submission_cli.cart_scan_ocr import (
     find_box_serial_in_ocr_text,
     format_box_barcode12_digits,
     refine_barcode_comp_with_gtin12_checksum,
+    run_vlm_on_ocr_crop_debug_for_cli,
     try_fill_serial_row_from_scans,
     vlm_extract_command,
 )
+from no_intro_switch_cart_submission_cli.constants import SERIAL_FIELDS
 from no_intro_switch_cart_submission_cli.config_serial import load_config, normalize_pcb_serial
 from no_intro_switch_cart_submission_cli.paths import CONFIG_FILE
 from no_intro_switch_cart_submission_cli.submission_xml_serials import (
@@ -89,11 +95,17 @@ def verify_scans_against_submission_xml(
     submission_xml: Path,
     release_dir: Path | None,
     compare: str,
+    *,
+    dump_roi_crops: bool = False,
+    vlm_debug_crops: bool = False,
+    config_path_for_debug: Path | None = None,
 ) -> int:
     """
     Compare serials in ``submission_xml`` to a fresh ``Scans/`` VLM extraction using ``cfg_path``.
 
     ``release_dir`` may be ``None`` (use parent directory of the XML). ``compare`` is ``stored`` or ``all``.
+    When ``dump_roi_crops`` is true, ROI debug PNGs are written like ``--ocr-dump-crops`` on the main CLI.
+    When ``vlm_debug_crops`` is true, runs the same merge as ``--vlm-debug-crops`` after the fill (needs crops).
     """
     xml_path = submission_xml.expanduser().resolve()
     if not xml_path.is_file():
@@ -120,14 +132,28 @@ def verify_scans_against_submission_xml(
         return 2
 
     expected = parse_trusted_dump_serials_from_submission_xml(xml_path)
-    vlm_row = {k: "" for k in _COMPARE_KEYS}
-    msgs = try_fill_serial_row_from_scans(rel_dir, vlm_row, cfg)
+    vlm_row: dict[str, str] = {k: "" for k in SERIAL_FIELDS}
+    msgs = try_fill_serial_row_from_scans(
+        rel_dir, vlm_row, cfg, dump_roi_crops=dump_roi_crops
+    )
+    dbg_msgs: list[str] = []
+    if vlm_debug_crops:
+        dbg_args: Any = SimpleNamespace(vlm_debug_crops=True)
+        dbg_msgs = run_vlm_on_ocr_crop_debug_for_cli(
+            rel_dir,
+            vlm_row,
+            cfg,
+            dbg_args,
+            config_path=config_path_for_debug or cfg_p,
+        )
 
     print(f"Submission XML: {xml_path}")
     print(f"Release / Scans anchor: {rel_dir}")
     print("Expected (XML):", submission_xml_serials_summary(expected))
     print("VLM (Scans/): ", submission_xml_serials_summary(vlm_row))
     for ln in msgs:
+        print(f"  {ln}")
+    for ln in dbg_msgs:
         print(f"  {ln}")
 
     mismatches: list[str] = []
@@ -174,6 +200,18 @@ def main() -> int:
             "all: every key must match, including empty-in-XML vs non-empty VLM."
         ),
     )
+    ap.add_argument(
+        "--ocr-dump-crops",
+        dest="ocr_dump_crops",
+        action="store_true",
+        help="Write <release>/_ocr_crop_debug/ ROI PNGs during the VLM fill (same as main CLI).",
+    )
+    ap.add_argument(
+        "--vlm-debug-crops",
+        dest="vlm_debug_crops",
+        action="store_true",
+        help="After fill, merge VLM JSON from existing _ocr_crop_debug/*_r0.png (same as main CLI).",
+    )
     args = ap.parse_args()
 
     return verify_scans_against_submission_xml(
@@ -181,6 +219,9 @@ def main() -> int:
         args.submission_xml,
         args.release_dir,
         args.compare,
+        dump_roi_crops=args.ocr_dump_crops,
+        vlm_debug_crops=args.vlm_debug_crops,
+        config_path_for_debug=args.config,
     )
 
 

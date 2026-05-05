@@ -127,7 +127,9 @@ class VerifyScansAgainstSubmission(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            def fill_side_effect(release_dir: Path, row: dict, cfg: dict) -> list[str]:
+            def fill_side_effect(
+                release_dir: Path, row: dict, cfg: dict, *, dump_roi_crops: bool = False
+            ) -> list[str]:
                 row["media_serial1"] = "LA-H-X-UKV"
                 row["media_serial2"] = "MS2"
                 row["pcb_serial"] = "\u25bc"
