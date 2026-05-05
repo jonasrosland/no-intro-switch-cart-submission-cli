@@ -61,6 +61,12 @@ class ParseTrustedDumpSerials(unittest.TestCase):
 
 
 class CanonicalSerialCompare(unittest.TestCase):
+    def test_box_serial_xml_space_between_hac_and_p(self) -> None:
+        self.assertEqual(
+            canonical_serial_for_compare("box_serial", "HAC P AT5VA"),
+            canonical_serial_for_compare("box_serial", "HAC-P-AT5VA"),
+        )
+
     def test_barcode_spacing_equivalent(self) -> None:
         a = canonical_serial_for_compare("box_barcode", "659048990448")
         b = canonical_serial_for_compare("box_barcode", "6 59048 99044 8")

@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 from no_intro_switch_cart_submission_cli.cart_scan_ocr import (
+    find_box_serial_in_ocr_text,
     format_box_barcode12_digits,
     refine_barcode_comp_with_gtin12_checksum,
     try_fill_serial_row_from_scans,
@@ -42,6 +43,33 @@ def _canonical_barcode(s: str) -> str:
     return t
 
 
+def _canonical_box_serial(s: str) -> str:
+    """
+    Match ``HAC-P-`` + five alphanumerics across minor formatting drift (XML / OCR / VLM).
+
+    Handles strict ``HAC-P-AT5VA``, spaced letters ``H A C - P - AT5VA``, ``HACP-AT5VA``, and
+    common pretty-print loss of hyphens: ``HAC P AT5VA``.
+    """
+    v = (s or "").strip()
+    if not v:
+        return ""
+    guess = find_box_serial_in_ocr_text(v)
+    if guess:
+        return guess.upper()
+    # Hyphens missing between HAC and P (e.g. some XML serializers): "HAC P AT5VA"
+    collapsed = re.sub(
+        r"(?<![A-Za-z0-9])HAC\s+P\s+([A-Za-z0-9]{5})(?![A-Za-z0-9])",
+        r"HAC-P-\1",
+        v,
+        flags=re.IGNORECASE,
+    )
+    if collapsed != v:
+        guess = find_box_serial_in_ocr_text(collapsed)
+        if guess:
+            return guess.upper()
+    return v.upper()
+
+
 def canonical_serial_for_compare(key: str, value: str) -> str:
     """Normalize values the same way we expect minor formatting drift between XML and VLM."""
     v = (value or "").strip()
@@ -52,7 +80,7 @@ def canonical_serial_for_compare(key: str, value: str) -> str:
     if key in ("media_serial1", "media_serial2"):
         return re.sub(r"\s+", "", v).upper()
     if key == "box_serial":
-        return v.upper()
+        return _canonical_box_serial(v)
     return v
 
 
