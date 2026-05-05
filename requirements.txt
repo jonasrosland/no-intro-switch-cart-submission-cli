@@ -1,2 +1,4 @@
 # PyPI nstools (RomFS/NACP/CNMT parsing — not jakcron NSTool CLI)
 nstools>=1.2.0,<2
+pillow>=10.0.0,<12
+pytesseract>=0.3.10,<0.4

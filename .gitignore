@@ -35,6 +35,9 @@ games/
 # jakcron secure-extract working tree (default <cwd>/temp-extract; may hold decrypted .nca briefly)
 temp-extract/
 
+# OCR ROI debug dumps (--ocr-dump-crops or scan_ocr.dump_crops)
+**/_ocr_crop_debug/
+
 # Editors / OS
 .cursor/
 .idea/

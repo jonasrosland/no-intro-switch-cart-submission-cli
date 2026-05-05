@@ -15,7 +15,7 @@ FROM python:3.12-slim-bookworm
 ARG NSTOOL_VERSION=1.9.2
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates wget unzip \
+    && apt-get install -y --no-install-recommends ca-certificates wget unzip tesseract-ocr \
     && wget -q "https://github.com/jakcron/nstool/releases/download/v${NSTOOL_VERSION}/nstool-v${NSTOOL_VERSION}-ubuntu_x86_64.zip" -O /tmp/nstool.zip \
     && unzip -q /tmp/nstool.zip -d /tmp/nstool-extract \
     && install -m755 /tmp/nstool-extract/nstool /opt/nstool \

@@ -30,6 +30,13 @@ from no_intro_switch_cart_submission_cli.releases import (
     version_segment_for_submission_xml,
 )
 from no_intro_switch_cart_submission_cli.nstool_stdout import parse_cup_metadata, parse_jakcron_nstool_application_meta
+from no_intro_switch_cart_submission_cli.cart_scan_ocr import (
+    format_ocr_serial_snapshot_lines,
+    ocr_scans_enabled,
+    run_vlm_on_ocr_crop_debug_for_cli,
+    try_fill_serial_row_from_scans_for_cli,
+    vlm_debug_crops_requested,
+)
 from no_intro_switch_cart_submission_cli.xml_build import build_xml, safe_filename_segment
 
 def main() -> int:
@@ -46,8 +53,8 @@ def main() -> int:
         action="store_true",
         help=(
             "Same skip rules as a normal run (existing Submission.xml in the release folder unless --force). "
-            "For processed releases: resolve metadata (including jakcron --secure / NACP when needed) but "
-            "skip hashing and writing XML."
+            "For processed releases: resolve metadata (including jakcron --secure / NACP when needed), "
+            "apply serial fields and optional --ocr-scans, then skip hashing and writing XML."
         ),
     )
     ap.add_argument(
@@ -81,6 +88,44 @@ def main() -> int:
         metavar="REV",
         help='Archive version1 (e.g. "Rev 009", "Rev 02"). When set, overrides auto rule from media_serial2.',
     )
+    ap.add_argument(
+        "--ocr-scans",
+        dest="ocr_scans",
+        action="store_true",
+        help=(
+            "After config/CLI serial fields, fill any still-empty media_serial1, media_serial2, box_serial, "
+            "box_barcode, and pcb_serial from Scans/ (insert spread, cart front/back; see README). "
+            "Optional scan_ocr.vlm_extract_command merges a vision model's JSON; set scan_ocr.use_tesseract "
+            "to false for VLM-only on ROI crops (no Tesseract). "
+            "Requires Pillow for crops; with use_tesseract true (default), also pytesseract and tesseract on PATH."
+        ),
+    )
+    ap.add_argument(
+        "--ocr-dump-crops",
+        dest="ocr_dump_crops",
+        action="store_true",
+        help=(
+            "With OCR enabled, write each ROI crop (PNG) and raw Tesseract text per role under "
+            "<release>/_ocr_crop_debug/ (insert spread, cart front/back — same layout for all roles) "
+            "and print that path. "
+            "If Tesseract raises for a role, crops are still written when possible and "
+            "<role>_ocr_exception.txt records the error. Remove the folder after debugging. "
+            "No effect without --ocr-scans or configuration OCR enabled."
+        ),
+    )
+    ap.add_argument(
+        "--vlm-debug-crops",
+        dest="vlm_debug_crops",
+        action="store_true",
+        help=(
+            "After normal scan OCR/VLM, run ``scan_ocr.vlm_extract_command`` again on "
+            "``<release>/_ocr_crop_debug/<role>_r0.png`` for insert_spread, cart_front, and "
+            "cart_back, and merge the JSON into the serial row (same rules as ``vlm_fill_empty_only``). "
+            "No effect unless that argv list is set in the configuration file (same as live-scan VLM). "
+            "Requires ROI crops from a prior ``--ocr-dump-crops`` run (or ``scan_ocr.dump_crops``). "
+            "Can also be enabled with ``\"scan_ocr\": { \"vlm_debug_crops\": true }`` in the configuration file."
+        ),
+    )
     manual.add_argument("--dumper", default=None, help="Override config dumper for this run.")
     manual.add_argument("--region", default=None)
     manual.add_argument("--languages", default=None)
@@ -88,6 +133,11 @@ def main() -> int:
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+    if getattr(args, "ocr_dump_crops", False) and not ocr_scans_enabled(cfg, args):
+        print(
+            "Warning: --ocr-dump-crops does nothing unless OCR runs (--ocr-scans or ocr_scans / scan_ocr in config).",
+            file=sys.stderr,
+        )
     path_base = config_path_base(cfg)
     root = resolve_path(args.root or cfg.get("root", "."), path_base)
     if root is None:
@@ -234,6 +284,25 @@ def main() -> int:
         out_name = " - ".join(base_parts) + " Submission.xml"
         out_path = rel.directory / out_name
 
+        serial_row = merged_serial_fields(cfg)
+        serial_row = apply_cli_serial_overrides(args, serial_row)
+        for ocr_ln in try_fill_serial_row_from_scans_for_cli(rel.directory, serial_row, cfg, args):
+            print(f"  {ocr_ln}")
+        for vlm_ln in run_vlm_on_ocr_crop_debug_for_cli(
+            rel.directory, serial_row, cfg, args, config_path=args.config
+        ):
+            print(f"  {vlm_ln}")
+        fill_gameid2_from_media_serial1_if_empty(serial_row)
+        if args.version1 is not None:
+            v1s = args.version1.strip()
+            version1_rev = v1s if v1s else None
+        else:
+            version1_rev = version1_rev_from_media_serial2(serial_row["media_serial2"])
+
+        if ocr_scans_enabled(cfg, args):
+            for snap_ln in format_ocr_serial_snapshot_lines(serial_row, version1_rev):
+                print(f"  {snap_ln}")
+
         if args.dry_run:
             print(f"  would write: {out_path.name}")
             written += 1
@@ -283,15 +352,6 @@ def main() -> int:
         comment1 = ""
         if rel.card_id_set:
             comment1 = card_id_comment(rel.card_id_set)
-
-        serial_row = merged_serial_fields(cfg)
-        serial_row = apply_cli_serial_overrides(args, serial_row)
-        fill_gameid2_from_media_serial1_if_empty(serial_row)
-        if args.version1 is not None:
-            v1s = args.version1.strip()
-            version1_rev = v1s if v1s else None
-        else:
-            version1_rev = version1_rev_from_media_serial2(serial_row["media_serial2"])
 
         xml_body = build_xml(
             game_name=game_name,

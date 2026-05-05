@@ -8,5 +8,31 @@
   "languages": "",
   "dump_date": null,
   "skip_hidden": true,
-  "jakcron_extract_temp_dir": "temp-extract"
+  "jakcron_extract_temp_dir": "temp-extract",
+  "ocr_scans": false,
+  "scan_ocr": {
+    "enabled": false,
+    "rois": [
+      { "x0": 0.25, "x1": 0.5, "y0": 0.78, "y1": 1 }
+    ],
+    "files": {},
+    "assign_by_sorted_order": false,
+    "dump_crops": false,
+    "use_tesseract": true,
+    "vlm_extract_command": [
+      "python3",
+      "/ABS/PATH/TO/Gamecard/scripts/lmstudio_serial_extract.py",
+      "--base-url",
+      "http://10.1.1.110:1234/v1",
+      "--model",
+      "smolvlm2-2.2b-instruct",
+      "--role",
+      "{role}",
+      "{image}"
+    ],
+    "vlm_timeout_seconds": 120,
+    "vlm_fill_empty_only": true,
+    "vlm_debug_crops": false,
+    "tesseract_cart_config": "--oem 3 --psm 6"
+  }
 }
