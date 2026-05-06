@@ -13,7 +13,7 @@ This tool was built using Composer 2 through Cursor.
 - **Python 3.10+**
 - **jakcron [NSTool](https://github.com/jakcron/nstool)** (CLI) on `PATH` or configured in the configuration file
 - **`pip install -r requirements.txt`** (PyPI `nstools` — RomFS / NACP parsing after extract; **Pillow** for optional **`Scans/`** ROI crops and vision-model crops)
-- **`scan_ocr.vlm_extract_command`** — argv list for a helper that reads each ROI crop and prints JSON (see **Optional cart scan OCR**); not bundled in the default **Dockerfile**
+- **`scan_ocr.vlm_extract_command`** — argv list for a helper that reads each ROI crop and prints JSON (see **Optional VLM-powered OCR of scanned images**); not bundled in the default **Dockerfile**
 - **`prod.keys`** from Lockpick/firmware (or `null` in the configuration file to use files located in `~/.switch/` like normal for `nstool`)
 - **USB dumps (recommended):** **[NX Dump Client](https://github.com/v1993/nxdumpclient)** — host app for **nxdumptool**; default output layout matches **Dump folder layout** below
 
@@ -27,7 +27,7 @@ cp no_intro_submit.example.json no_intro_submit.json
 # Edit the configuration file (e.g. no_intro_submit.json) — paths are relative to this directory unless you set path_root
 ```
 
-Default configuration path is **`no_intro_submit.json`** in the **repository root** (same folder as `no_intro_switch_cart_submission_cli/`); use **`--config /path/to/file.json`** to override. Typical keys match **`no_intro_submit.example.json`**: **`root`**, **`nstool`**, **`prod_keys`**, **`dumper`**, **`tool`**, **`region`**, **`languages`**, **`dump_date`**, **`skip_hidden`**, **`jakcron_extract_temp_dir`** (parent folder for jakcron secure extract; relative to **`path_root`**, default example **`temp-extract`**), optional **`ocr_scans`** / **`scan_ocr`** for **`Scans/`** serial extraction (see **Optional cart scan OCR** below), including **`scan_ocr.ignore_scan_patterns`** when you need extra basename globs beyond the built-in reverse/inside skips, plus the catalog serial fields below (and optional **`path_root`** for Docker). If **`jakcron_extract_temp_dir`** is omitted, **`<cwd>/temp-extract`** is used instead.
+Default configuration path is **`no_intro_submit.json`** in the **repository root** (same folder as `no_intro_switch_cart_submission_cli/`); use **`--config /path/to/file.json`** to override. Typical keys match **`no_intro_submit.example.json`**: **`root`**, **`nstool`**, **`prod_keys`**, **`dumper`**, **`tool`**, **`region`**, **`languages`**, **`dump_date`**, **`skip_hidden`**, **`jakcron_extract_temp_dir`** (parent folder for jakcron secure extract; relative to **`path_root`**, default example **`temp-extract`**), optional **`ocr_scans`** / **`scan_ocr`** for **`Scans/`** serial extraction (see **Optional VLM-powered OCR of scanned images** below), plus the catalog serial fields below (and optional **`path_root`** for Docker). If **`jakcron_extract_temp_dir`** is omitted, **`<cwd>/temp-extract`** is used instead.
 
 You do not need **`skip_hidden`**, **`jakcron_basenca`**, **`title_keys`**, or a custom **`jakcron_extract_temp_dir`** unless you want non-default behavior (dot-folder scan; BKTR base NCA; extra Lockpick keys; extract parent path other than the example **`temp-extract`** under **`path_root`**).
 
@@ -129,17 +129,19 @@ Put catalog strings in the configuration file (**`dumper`**, **`tool`**, **`regi
 
 **`--version1`** always overrides the automatic rule.
 
-### Optional cart scan OCR (`Scans/`)
+### Optional VLM-powered OCR of scanned images
 
-Expect **up to three** photos per title (names or `scan_ocr.files` in the configuration file):
+Completely optional, but if you want to try this feature it *can* be helpful in reading the serials from backs of covers, and front/back of carts. **Always verify manually**, as VLMs (Vision Language Models) can make mistakes, just like any other OCR tool. I tried using `tesseract` and it's OCR functionality to perform this task, but the results were unfortunately not good enough.
+
+This option expects **up to three** scans per title (by filenames or `scan_ocr.files` in the configuration file):
 
 | Role | Typical content | Optional? |
 |------|-----------------|-----------|
-| **insert_spread** | Full flatbed of **retail insert** (front + spine + back in one wide image) | Prefer at least one; if nothing matches by name, the **first sorted image that is not skipped** (reverse/inside patterns; see below) becomes the insert |
+| **insert_spread** | Full scan of **retail insert** (front + spine + back in one wide image) | Matched only by **`scan_ocr.files`** or default **`fnmatch`** patterns (e.g. `*spread*`, `*flatbed*`); see **Discovery** below |
 | **cart_front** | **Cartridge front** (LA-H-… → **`media_serial1`**) | Yes if you only have packaging scans |
 | **cart_back** | **Cartridge back** (**`media_serial2`**, **`pcb_serial`**) | Yes |
 
-**Inside / reverse cover** flatbeds are **not** cropped or sent to a model by this tool (keep them in `Scans/` for your own archive if you like). Basenames matching built-in **`fnmatch`** patterns `*reverse*` and `*inside*` (case-insensitive) are skipped entirely, including **`scan_ocr.files`** and **`_ocr_crop_debug`** dumps. Add more globs via **`scan_ocr.ignore_scan_patterns`** (list of strings).
+Other photos in **`Scans/`** (inside cover, reverse insert, camera extras, etc.) are **ignored** unless you map them with **`scan_ocr.files`** or they match a role pattern. They are **not** cropped, sent to a VLM, or written to **`_ocr_crop_debug`**.
 
 **Vision model on ROI crops:** set **`scan_ocr.vlm_extract_command`** to an argv list (see below). The tool applies the same **ROI crops** (grayscale, autocontrast, resize) as for **`--ocr-dump-crops`**; **`{image}`** is each **temporary crop PNG** in turn (not the full flatbed). Each role triggers **one subprocess per ROI** (e.g. two ROIs → two calls). Set **`vlm_timeout_seconds`** high enough for the slowest role (**`insert_spread`** uses **two** HTTP calls per crop in **`lmstudio_serial_extract.py`** — **`box_serial`** then **`box_barcode`**).
 
@@ -183,9 +185,9 @@ The tool reads **each assigned image** by role and merges VLM JSON per field rul
 - **`media_serial2`** — **cart_back** only (laser etch and/or ``TSA-HAC-…`` on the cart reverse).
 - **`pcb_serial`** — **cart_back** only.
 
-**Discovery:** (0) skip any basename matching **`ignore_scan_patterns`** plus the built-in `*reverse*` / `*inside*` skips; (1) **`scan_ocr.files`** maps each role to a **basename** under `Scans/`; (2) else **fnmatch** on the filename (`scan_ocr.role_patterns` overrides defaults); (3) if **insert_spread** is still unassigned, the first sorted image not already used for another role becomes the insert (legacy single-scan layout); (4) if **`"assign_by_sorted_order": true`**, any role that is still empty gets the next unused image in **sorted filename order**, following **insert_spread** → **cart_front** → **cart_back** — use this when filenames are generic (e.g. camera rolls) but you **always order** the three shots the same way before running the tool.
+**Discovery:** (1) **`scan_ocr.files`** maps each role to a **basename** under `Scans/`; (2) else **fnmatch** on the filename (`scan_ocr.role_patterns` overrides defaults — default insert patterns include `*spread*`, `*flatbed*`, etc., but not `*insert*` so names like `reverse-insert.jpg` are not picked up); (3) if **`"assign_by_sorted_order": true`**, any role that is still empty gets the next unused image in **sorted filename order**, following **insert_spread** → **cart_front** → **cart_back** — use this when filenames are generic (e.g. camera rolls) but you **always order** the three shots the same way before running the tool.
 
-The tool does **not** inspect image content to guess roles; without names or patterns you only get a reliable **insert** from the first **usable** file after skips (step 3). For cart photos you need either **meaningful names**, **`scan_ocr.files`**, or **`assign_by_sorted_order`**.
+The tool does **not** inspect image content to guess roles. If nothing matches a role, that role is left unset and any extra files in `Scans/` are simply ignored. For predictable cart roles you need **`scan_ocr.files`**, filenames that match the defaults, or **`assign_by_sorted_order`**.
 
 **`box_barcode`:** twelve digit characters (spaced retail line or digit-heavy line); compact runs are normalized to **`d ddddd ddddd d`**. **Thirteen-digit** runs are **not** used. When a twelve-digit read **fails the GTIN check digit**, the tool tries **single** digit substitutions in priority order (**0** vs **5** first, then a few other common confusions) and uses the **first** substitution that yields a valid check digit.
 
@@ -193,7 +195,7 @@ The tool does **not** inspect image content to guess roles; without names or pat
 
 **Dependencies:** **Pillow** is required for ROI cropping. The default **Dockerfile** does **not** install PyTorch or local VLM weights; run **`vlm_extract_command`** on the host or a machine with your model stack.
 
-OCR is **best-effort**; verify serials in the generated XML. Tune **`scan_ocr.rois`** (insert), **`scan_ocr.rois_by_role`** (per role), **`scan_ocr.role_patterns`**, **`ignore_scan_patterns`**, or **`assign_by_sorted_order`** if your filenames differ.
+OCR is **best-effort**; verify serials in the generated XML. Tune **`scan_ocr.rois`** (insert), **`scan_ocr.rois_by_role`** (per role), **`scan_ocr.role_patterns`**, or **`assign_by_sorted_order`** if your filenames differ.
 
 ### Docker
 

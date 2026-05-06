@@ -24,7 +24,6 @@ from no_intro_switch_cart_submission_cli.cart_scan_ocr import (
     ocr_scans_enabled,
     resolve_scans_dir,
     run_vlm_serial_extract,
-    scan_basename_ignored_for_scan_ocr,
     scan_ocr_rois_for_role,
     scan_ocr_rois_from_cfg,
     try_fill_serial_row_from_scans,
@@ -278,7 +277,8 @@ class DiscoverScanPathsByRole(unittest.TestCase):
             self.assertEqual(got["cart_front"], d / "spread.png")
             self.assertIsNone(got["cart_back"])
 
-    def test_fnmatch_cart_and_legacy_insert(self) -> None:
+    def test_fnmatch_cart_and_insert_by_pattern_not_orphan(self) -> None:
+        """Unmatched files are not promoted to insert_spread (no legacy first-file insert)."""
         with tempfile.TemporaryDirectory() as td:
             d = Path(td) / "Scans"
             d.mkdir()
@@ -288,7 +288,17 @@ class DiscoverScanPathsByRole(unittest.TestCase):
             got = discover_scan_paths_by_role(d, {})
             self.assertEqual(got["cart_front"], d / "cart-front.png")
             self.assertEqual(got["cart_back"], d / "cart-back.png")
-            self.assertEqual(got["insert_spread"], d / "orphan.png")
+            self.assertIsNone(got["insert_spread"])
+
+    def test_fnmatch_insert_when_basename_matches_spread(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "Scans"
+            d.mkdir()
+            (d / "cart-back.png").write_bytes(b"x")
+            (d / "cart-front.png").write_bytes(b"x")
+            (d / "insert-spread-flat.png").write_bytes(b"x")
+            got = discover_scan_paths_by_role(d, {})
+            self.assertEqual(got["insert_spread"], d / "insert-spread-flat.png")
 
     def test_assign_by_sorted_order_fills_unnamed_files(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -302,8 +312,8 @@ class DiscoverScanPathsByRole(unittest.TestCase):
             self.assertEqual(got["cart_front"], d / "b.png")
             self.assertEqual(got["cart_back"], d / "m.png")
 
-    def test_reverse_inside_basenames_not_used_for_insert_or_order(self) -> None:
-        """reverse-insert sorts before many names and matches *insert* — must be excluded from the pool."""
+    def test_reverse_insert_filename_does_not_match_insert_patterns(self) -> None:
+        """``*insert*`` is not a default pattern — ``reverse-insert`` must not win insert_spread."""
         with tempfile.TemporaryDirectory() as td:
             d = Path(td) / "Scans"
             d.mkdir()
@@ -311,20 +321,9 @@ class DiscoverScanPathsByRole(unittest.TestCase):
             (d / "spread-flat.png").write_bytes(b"x")
             got = discover_scan_paths_by_role(d, {})
             self.assertEqual(got["insert_spread"], d / "spread-flat.png")
+            self.assertIsNone(got["cart_front"])
 
-    def test_assign_by_sorted_order_skips_reverse_files(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            d = Path(td) / "Scans"
-            d.mkdir()
-            for name in ("reverse.png", "a.png", "b.png", "c.png"):
-                (d / name).write_bytes(b"x")
-            cfg = {"scan_ocr": {"assign_by_sorted_order": True}}
-            got = discover_scan_paths_by_role(d, cfg)
-            self.assertEqual(got["insert_spread"], d / "a.png")
-            self.assertEqual(got["cart_front"], d / "b.png")
-            self.assertEqual(got["cart_back"], d / "c.png")
-
-    def test_explicit_reverse_basename_is_skipped(self) -> None:
+    def test_explicit_insert_file_wins_even_if_basename_says_reverse(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             d = Path(td) / "Scans"
             d.mkdir()
@@ -336,12 +335,7 @@ class DiscoverScanPathsByRole(unittest.TestCase):
                 }
             }
             got = discover_scan_paths_by_role(d, cfg)
-            self.assertEqual(got["insert_spread"], d / "flatbed.png")
-
-    def test_ignore_scan_patterns_config(self) -> None:
-        cfg = {"scan_ocr": {"ignore_scan_patterns": ["*archive*"]}}
-        self.assertTrue(scan_basename_ignored_for_scan_ocr("foo_archive_bar.png", cfg))
-        self.assertFalse(scan_basename_ignored_for_scan_ocr("foo_archive_bar.png", {}))
+            self.assertEqual(got["insert_spread"], d / "reverse.png")
 
 
 class CombineExtractions(unittest.TestCase):
@@ -449,18 +443,6 @@ class VlmExtractHelpers(unittest.TestCase):
 
 
 class TryFillFromScansMocked(unittest.TestCase):
-    def test_all_basenames_ignored_returns_clear_message(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            ver = Path(td) / "1.0"
-            scans = Path(td) / "Scans"
-            ver.mkdir(parents=True)
-            scans.mkdir()
-            (scans / "reverse.png").write_bytes(b"\x89PNG\r\n\x1a\n")
-            row = {k: "" for k in ("media_serial1", "media_serial2", "box_serial", "box_barcode", "pcb_serial")}
-            cfg = {"scan_ocr": {"vlm_extract_command": ["true"]}}
-            msgs = try_fill_serial_row_from_scans(ver, row, cfg)
-            self.assertTrue(any("no images left after" in m for m in msgs), msg=msgs)
-
     def test_fills_from_vlm_fields_on_insert(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             tmp_path = Path(td)
@@ -590,33 +572,8 @@ class TryFillFromScansMocked(unittest.TestCase):
             w.assert_called_once()
             self.assertEqual(w.call_args[0][1], "cart_front")
 
-    def test_dump_writes_scan_crop_for_unassigned_files(self) -> None:
-        with tempfile.TemporaryDirectory() as td:
-            ver = Path(td) / "1.0"
-            scans = Path(td) / "Scans"
-            ver.mkdir(parents=True)
-            scans.mkdir()
-            (scans / "insert_only.png").write_bytes(b"\x89PNG\r\n\x1a\n")
-            (scans / "orphan.png").write_bytes(b"\x89PNG\r\n\x1a\n")
-            row = {k: "" for k in ("media_serial1", "media_serial2", "box_serial", "box_barcode", "pcb_serial")}
-            cfg = {
-                "scan_ocr": {
-                    "files": {"insert_spread": "insert_only.png"},
-                    "vlm_extract_command": ["true"],
-                }
-            }
-            with patch(
-                "no_intro_switch_cart_submission_cli.cart_scan_ocr._vlm_fields_from_cropped_rois",
-                return_value=({"box_serial": "HAC-P-X"}, None),
-            ), patch(
-                "no_intro_switch_cart_submission_cli.cart_scan_ocr.write_ocr_debug_crops",
-            ) as w:
-                try_fill_serial_row_from_scans(ver, row, cfg, dump_roi_crops=True)
-            tags = [c.args[1] for c in w.call_args_list]
-            self.assertIn("insert_spread", tags)
-            self.assertIn("scan_orphan", tags)
-
-    def test_dump_skips_ignored_reverse_for_unassigned(self) -> None:
+    def test_dump_crops_only_for_assigned_roles(self) -> None:
+        """Extra Scans/ files do not get debug ROI dumps — only assigned roles do."""
         with tempfile.TemporaryDirectory() as td:
             ver = Path(td) / "1.0"
             scans = Path(td) / "Scans"
@@ -640,9 +597,7 @@ class TryFillFromScansMocked(unittest.TestCase):
             ) as w:
                 try_fill_serial_row_from_scans(ver, row, cfg, dump_roi_crops=True)
             tags = [c.args[1] for c in w.call_args_list]
-            self.assertIn("insert_spread", tags)
-            self.assertIn("scan_orphan", tags)
-            self.assertNotIn("scan_inside-cover", tags)
+            self.assertEqual(tags, ["insert_spread"])
 
     def test_for_cli_respects_disabled(self) -> None:
         with tempfile.TemporaryDirectory() as td:

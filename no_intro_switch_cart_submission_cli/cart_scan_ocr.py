@@ -42,8 +42,8 @@ _SCAN_ROLES: tuple[str, ...] = (
 
 # fnmatch on basename (case-insensitive). First unused file wins per role, in role order.
 _DEFAULT_ROLE_PATTERNS: dict[str, tuple[str, ...]] = {
+    # Omit ``*insert*`` so names like ``reverse-insert.jpg`` are not mistaken for the retail insert.
     "insert_spread": (
-        "*insert*",
         "*spread*",
         "*flatbed*",
         "*front*back*",
@@ -53,14 +53,6 @@ _DEFAULT_ROLE_PATTERNS: dict[str, tuple[str, ...]] = {
     "cart_front": ("*cart*front*", "*front*cart*", "*cart_front*"),
     "cart_back": ("*cart*back*", "*back*cart*", "*cart_back*"),
 }
-
-# Basenames matching these fnmatch patterns (case-insensitive) are skipped for scan OCR entirely:
-# no role assignment (including ``scan_ocr.files``), no VLM crops, no ``_ocr_crop_debug`` dumps.
-# Extend with ``scan_ocr.ignore_scan_patterns`` (list of strings).
-_DEFAULT_IGNORE_SCAN_BASENAME_PATTERNS: tuple[str, ...] = (
-    "*reverse*",
-    "*inside*",
-)
 
 # When merging OCR from several images, which role wins for each XML field (first hit wins).
 _FIELD_ROLE_PRIORITY: dict[str, tuple[str, ...]] = {
@@ -199,35 +191,6 @@ def list_scan_image_paths(scans_dir: Path) -> list[Path]:
     return sorted(out, key=lambda x: x.name.lower())
 
 
-def _ignore_scan_basename_patterns(cfg: dict[str, Any]) -> list[str]:
-    patterns = list(_DEFAULT_IGNORE_SCAN_BASENAME_PATTERNS)
-    block = cfg.get("scan_ocr") if isinstance(cfg.get("scan_ocr"), dict) else {}
-    extra = block.get("ignore_scan_patterns")
-    if isinstance(extra, list):
-        for x in extra:
-            s = str(x).strip()
-            if s:
-                patterns.append(s)
-    return patterns
-
-
-def scan_basename_ignored_for_scan_ocr(basename: str, cfg: dict[str, Any]) -> bool:
-    """True if this scan basename must not participate in role assignment or OCR/debug dumps."""
-    name_lower = basename.lower()
-    for pat in _ignore_scan_basename_patterns(cfg):
-        if fnmatch.fnmatch(name_lower, pat.lower()):
-            return True
-    return False
-
-
-def _list_scan_image_paths_for_ocr(scans_dir: Path, cfg: dict[str, Any]) -> list[Path]:
-    return [
-        p
-        for p in list_scan_image_paths(scans_dir)
-        if not scan_basename_ignored_for_scan_ocr(p.name, cfg)
-    ]
-
-
 def _parse_roi_dict_list(raw: Any) -> list[tuple[float, float, float, float]]:
     if not isinstance(raw, list) or not raw:
         return []
@@ -293,18 +256,17 @@ def discover_scan_paths_by_role(scans_dir: Path, cfg: dict[str, Any]) -> dict[st
     """
     Map role -> image path.
 
-    Resolution: (1) ``scan_ocr.files`` basename entries, (2) fnmatch on sorted files per role
-    (each file at most one role, order insert_spread → cart_front → cart_back),
-    (3) if **insert_spread** is still unset, assign the first sorted image not yet used (legacy),
-    (4) if ``scan_ocr.assign_by_sorted_order`` is true, assign any still-empty role from remaining
-    images in that same role order (**insert_spread** → **cart_front** → **cart_back**).
+    Resolution: (1) ``scan_ocr.files`` basename entries; (2) fnmatch on sorted files per role
+    (each file at most one role, order insert_spread → cart_front → cart_back); (3) if
+    ``scan_ocr.assign_by_sorted_order`` is true, assign any still-empty role from remaining
+    images in that same role order. Other files in ``Scans/`` are ignored.
 
-    Files whose basenames match ``scan_ocr.ignore_scan_patterns`` (plus built-in defaults such as
-    ``*reverse*`` / ``*inside*``) are omitted from (1)–(4); they are never used for OCR or debug crops.
+    Unmatched extra photos (e.g. inside cover) are never sent to the VLM or written to
+    ``_ocr_crop_debug`` — only paths assigned to a role are used.
     """
     scans_dir = scans_dir.resolve()
     out: dict[str, Path | None] = {r: None for r in _SCAN_ROLES}
-    pics = _list_scan_image_paths_for_ocr(scans_dir, cfg)
+    pics = list_scan_image_paths(scans_dir)
     if not pics:
         return out
 
@@ -319,8 +281,6 @@ def discover_scan_paths_by_role(scans_dir: Path, cfg: dict[str, Any]) -> dict[st
                 continue
             safe = Path(str(raw_name).strip()).name
             if not safe or safe in (".", ".."):
-                continue
-            if scan_basename_ignored_for_scan_ocr(safe, cfg):
                 continue
             candidate = (scans_dir / safe).resolve()
             try:
@@ -344,14 +304,6 @@ def discover_scan_paths_by_role(scans_dir: Path, cfg: dict[str, Any]) -> dict[st
                     out[role] = pic
                     used.add(pic.resolve())
                     break
-
-    if out["insert_spread"] is None:
-        for pic in pics:
-            pr = pic.resolve()
-            if pr not in used:
-                out["insert_spread"] = pic
-                used.add(pr)
-                break
 
     if block.get("assign_by_sorted_order"):
         remaining = [p for p in pics if p.resolve() not in used]
@@ -824,14 +776,6 @@ def _vlm_fields_from_cropped_rois(
     return combined, None
 
 
-def _debug_tag_for_unassigned_scan(p: Path) -> str:
-    """Stable filename segment for debug dumps of scans not matched to a role."""
-    safe = re.sub(r"[^\w\-.]+", "_", p.stem).strip("._-")
-    if not safe:
-        safe = "image"
-    return f"scan_{safe[:72]}"
-
-
 def write_ocr_debug_crops(debug_dir: Path, role: str, src: Path, rois: list[tuple[float, float, float, float]], raw: str) -> None:
     """Save per-ROI PNGs (same preprocessing as VLM crops) plus ``{role}_raw.txt`` (optional legacy text)."""
     from PIL import Image
@@ -871,15 +815,8 @@ def try_fill_serial_row_from_scans(
     scans = resolve_scans_dir(release_dir)
     if scans is None:
         return ["ocr_scans: no Scans folder (tried parent and release directory)"]
-    raw_pics = list_scan_image_paths(scans)
-    pics = [p for p in raw_pics if not scan_basename_ignored_for_scan_ocr(p.name, cfg)]
-    if not raw_pics:
+    if not list_scan_image_paths(scans):
         return [f"ocr_scans: empty {scans.name}/"]
-    if not pics:
-        return [
-            "ocr_scans: no images left after built-in reverse/inside skips and "
-            f"scan_ocr.ignore_scan_patterns under {scans.name}/",
-        ]
 
     vlm_argv = vlm_extract_command(cfg)
     if not vlm_argv:
@@ -891,7 +828,6 @@ def try_fill_serial_row_from_scans(
     by_role: dict[str, dict[str, str]] = {}
     used_labels: list[str] = []
     errors: list[str] = []
-    post_debug_hints: list[str] = []
 
     role_paths = discover_scan_paths_by_role(scans, cfg)
     debug_dir = release_dir / "_ocr_crop_debug"
@@ -967,36 +903,10 @@ def try_fill_serial_row_from_scans(
             by_role[role] = extracted
         used_labels.append(f"{role}={path.name}")
 
-    if dump_roi_crops and pics:
-        assigned_resolved = {p.resolve() for p in role_paths.values() if p is not None}
-        n_unassigned_dump = 0
-        for pic in pics:
-            if pic.resolve() in assigned_resolved:
-                continue
-            n_unassigned_dump += 1
-            try:
-                if not debug_dir_initialized:
-                    if debug_dir.exists():
-                        shutil.rmtree(debug_dir)
-                    debug_dir.mkdir(parents=True, exist_ok=True)
-                    debug_dir_initialized = True
-                tag = _debug_tag_for_unassigned_scan(pic)
-                write_ocr_debug_crops(debug_dir, tag, pic, [(0.0, 1.0, 0.0, 1.0)], "")
-                debug_note = str(debug_dir.resolve())
-            except Exception as de:  # noqa: BLE001
-                errors.append(f"{pic.name} (extra debug crops): {de}")
-        if n_unassigned_dump and (
-            role_paths.get("cart_front") is None or role_paths.get("cart_back") is None
-        ):
-            post_debug_hints.append(
-                "ocr_scans: some Scans/ files are not assigned to cart_front/cart_back — "
-                "see scan_* crops (full frame); map them with scan_ocr.files or rename (*cart*front*, *cart*back*)."
-            )
-
     dbg = f"ocr_scans: debug ROI crops → {debug_note}" if debug_note else None
 
     if errors and not by_role:
-        return _prepend_ocr_debug_path(dbg, [*post_debug_hints, f"ocr_scans: failed — {'; '.join(errors)}"])
+        return _prepend_ocr_debug_path(dbg, [f"ocr_scans: failed — {'; '.join(errors)}"])
 
     combined = combine_extractions_by_field_priority(by_role)
     if not combined:
@@ -1004,7 +914,6 @@ def try_fill_serial_row_from_scans(
         return _prepend_ocr_debug_path(
             dbg,
             [
-                *post_debug_hints,
                 "ocr_scans: no serial patterns in assigned scan(s)"
                 f" ({', '.join(used_labels) or 'no roles matched'}){hint}",
             ],
@@ -1016,12 +925,12 @@ def try_fill_serial_row_from_scans(
         extra = f"; {'; '.join(errors)}" if errors else ""
         return _prepend_ocr_debug_path(
             dbg,
-            [*post_debug_hints, f"ocr_scans: parsed [{summary}] but all target fields already set{extra}"],
+            [f"ocr_scans: parsed [{summary}] but all target fields already set{extra}"],
         )
     err_tail = f"; warnings: {'; '.join(errors)}" if errors else ""
     return _prepend_ocr_debug_path(
         dbg,
-        [*post_debug_hints, f"ocr_scans: filled {', '.join(filled)} from [{summary}]{err_tail}"],
+        [f"ocr_scans: filled {', '.join(filled)} from [{summary}]{err_tail}"],
     )
 
 
