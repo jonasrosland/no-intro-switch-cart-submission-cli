@@ -136,7 +136,7 @@ def _gtin12_check_digit_valid(comp12: str) -> bool:
 def refine_barcode_comp_with_gtin12_checksum(comp: str) -> str:
     """
     If twelve digits fail the GTIN check, try **single** substitutions; return the **first**
-    checksum-valid hit using swap priority (**0** vs **5** first — common Tesseract confusion), then
+    checksum-valid hit using swap priority (**0** vs **5** first — common OCR digit confusion), then
     other digit pairs. Ambiguous multi-fix cases are left unchanged.
     """
     if len(comp) != 12 or not comp.isdigit():

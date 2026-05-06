@@ -17,6 +17,7 @@
     ],
     "files": {},
     "assign_by_sorted_order": false,
+    "ignore_scan_patterns": [],
     "dump_crops": false,
     "vlm_extract_command": [
       "python3",
