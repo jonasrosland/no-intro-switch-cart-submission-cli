@@ -290,15 +290,15 @@ class DiscoverScanPathsByRole(unittest.TestCase):
             self.assertEqual(got["cart_back"], d / "cart-back.png")
             self.assertIsNone(got["insert_spread"])
 
-    def test_fnmatch_insert_when_basename_matches_spread(self) -> None:
+    def test_fnmatch_insert_when_basename_matches_cover(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             d = Path(td) / "Scans"
             d.mkdir()
             (d / "cart-back.png").write_bytes(b"x")
             (d / "cart-front.png").write_bytes(b"x")
-            (d / "insert-spread-flat.png").write_bytes(b"x")
+            (d / "retail-cover-wide.png").write_bytes(b"x")
             got = discover_scan_paths_by_role(d, {})
-            self.assertEqual(got["insert_spread"], d / "insert-spread-flat.png")
+            self.assertEqual(got["insert_spread"], d / "retail-cover-wide.png")
 
     def test_assign_by_sorted_order_fills_unnamed_files(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -312,15 +312,15 @@ class DiscoverScanPathsByRole(unittest.TestCase):
             self.assertEqual(got["cart_front"], d / "b.png")
             self.assertEqual(got["cart_back"], d / "m.png")
 
-    def test_reverse_insert_filename_does_not_match_insert_patterns(self) -> None:
-        """``*insert*`` is not a default pattern — ``reverse-insert`` must not win insert_spread."""
+    def test_reverse_insert_filename_does_not_match_cover_pattern(self) -> None:
+        """``reverse-insert`` has no ``cover`` substring — only the retail cover file matches insert."""
         with tempfile.TemporaryDirectory() as td:
             d = Path(td) / "Scans"
             d.mkdir()
             (d / "reverse-insert.png").write_bytes(b"x")
-            (d / "spread-flat.png").write_bytes(b"x")
+            (d / "retail-cover.png").write_bytes(b"x")
             got = discover_scan_paths_by_role(d, {})
-            self.assertEqual(got["insert_spread"], d / "spread-flat.png")
+            self.assertEqual(got["insert_spread"], d / "retail-cover.png")
             self.assertIsNone(got["cart_front"])
 
     def test_explicit_insert_file_wins_even_if_basename_says_reverse(self) -> None:

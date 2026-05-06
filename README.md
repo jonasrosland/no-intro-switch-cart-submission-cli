@@ -42,7 +42,7 @@ An example layout (point **`--root`** at **`Dumps/`**; the tool recurses into ea
 ```text
 Dumps/
 ├── Cyber Shadow/
-│   ├── Scans/                         (optional — insert spread, cart front/back; see README)
+│   ├── Scans/                         (optional — cover / cart front & back; see README)
 │   └── 1.0.5/
 │       ├── Cyber Shadow 1.0.5 [01008D100DE46000][v196608] [NKA][NC][NT].xci
 │       ├── Cyber Shadow 1.0.5 [01008D100DE46000][v196608] (Initial Data) (57A3A06C).bin
@@ -137,7 +137,7 @@ This option expects **up to three** scans per title (by filenames or `scan_ocr.f
 
 | Role | Typical content | Optional? |
 |------|-----------------|-----------|
-| **insert_spread** | Full scan of **retail insert** (front + spine + back in one wide image) | Matched only by **`scan_ocr.files`** or default **`fnmatch`** patterns (e.g. `*spread*`, `*flatbed*`); see **Discovery** below |
+| **insert_spread** | Full scan of **retail cover** (insert: front + spine + back in one wide image) | Matched by **`scan_ocr.files`** or default `*cover*` on the basename; see **Discovery** below |
 | **cart_front** | **Cartridge front** (LA-H-… → **`media_serial1`**) | Yes if you only have packaging scans |
 | **cart_back** | **Cartridge back** (**`media_serial2`**, **`pcb_serial`**) | Yes |
 
@@ -185,7 +185,7 @@ The tool reads **each assigned image** by role and merges VLM JSON per field rul
 - **`media_serial2`** — **cart_back** only (laser etch and/or ``TSA-HAC-…`` on the cart reverse).
 - **`pcb_serial`** — **cart_back** only.
 
-**Discovery:** (1) **`scan_ocr.files`** maps each role to a **basename** under `Scans/`; (2) else **fnmatch** on the filename (`scan_ocr.role_patterns` overrides defaults — default insert patterns include `*spread*`, `*flatbed*`, etc., but not `*insert*` so names like `reverse-insert.jpg` are not picked up); (3) if **`"assign_by_sorted_order": true`**, any role that is still empty gets the next unused image in **sorted filename order**, following **insert_spread** → **cart_front** → **cart_back** — use this when filenames are generic (e.g. camera rolls) but you **always order** the three shots the same way before running the tool.
+**Discovery:** (1) **`scan_ocr.files`** maps each role to a **basename** under `Scans/`; (2) else **fnmatch** on the filename (`scan_ocr.role_patterns` overrides defaults — by default `*cover*` for the wide retail scan, `*cart*front*` / `*cart*back*` plus a few word-order variants for the cartridge photos); (3) if **`"assign_by_sorted_order": true`**, any role that is still empty gets the next unused image in **sorted filename order**, following **insert_spread** → **cart_front** → **cart_back** — use this when filenames are generic (e.g. camera rolls) but you **always order** the three shots the same way before running the tool.
 
 The tool does **not** inspect image content to guess roles. If nothing matches a role, that role is left unset and any extra files in `Scans/` are simply ignored. For predictable cart roles you need **`scan_ocr.files`**, filenames that match the defaults, or **`assign_by_sorted_order`**.
 

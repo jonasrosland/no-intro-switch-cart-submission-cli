@@ -92,7 +92,7 @@ def main() -> int:
         action="store_true",
         help=(
             "After config/CLI serial fields, fill any still-empty media_serial1, media_serial2, box_serial, "
-            "box_barcode, and pcb_serial from Scans/ (insert spread, cart front/back; see README). "
+            "box_barcode, and pcb_serial from Scans/ (retail cover scan, cart front/back; see README). "
             "Requires scan_ocr.vlm_extract_command (vision-model argv with {image} and optional {role}) "
             "and Pillow for ROI crops."
         ),

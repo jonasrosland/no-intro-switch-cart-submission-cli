@@ -42,14 +42,7 @@ _SCAN_ROLES: tuple[str, ...] = (
 
 # fnmatch on basename (case-insensitive). First unused file wins per role, in role order.
 _DEFAULT_ROLE_PATTERNS: dict[str, tuple[str, ...]] = {
-    # Omit ``*insert*`` so names like ``reverse-insert.jpg`` are not mistaken for the retail insert.
-    "insert_spread": (
-        "*spread*",
-        "*flatbed*",
-        "*front*back*",
-        "*back*front*",
-        "*cover*spread*",
-    ),
+    "insert_spread": ("*cover*",),
     "cart_front": ("*cart*front*", "*front*cart*", "*cart_front*"),
     "cart_back": ("*cart*back*", "*back*cart*", "*cart_back*"),
 }
