@@ -4,11 +4,11 @@ Call an LM Studio OpenAI-compatible server and print one JSON object for ``scan_
 
 Configure the server URL and model in ``no_intro_submit.json`` (argv list — no environment variables).
 
-Example ``scan_ocr`` block::
+Example ``scan_ocr`` block (``--base-url`` must match **your** LM Studio server; configure it only in JSON)::
 
     "vlm_extract_command": [
       "python3", "/ABS/PATH/TO/Gamecard/scripts/lmstudio_serial_extract.py",
-      "--base-url", "http://10.1.1.110:1234/v1",
+      "--base-url", "http://localhost:1234/v1",
       "--model", "your-model-id-from-lm-studio",
       "--role", "{role}",
       "{image}"
@@ -143,7 +143,7 @@ def main() -> None:
     ap.add_argument(
         "--base-url",
         required=True,
-        help="LM Studio server base, e.g. http://10.1.1.110:1234/v1",
+        help="LM Studio server base (set in your JSON config), e.g. http://localhost:1234/v1",
     )
     ap.add_argument(
         "--model",
@@ -205,6 +205,21 @@ def main() -> None:
                 model_id,
                 path,
                 prompt,
+                max_tokens=args.max_tokens,
+                timeout=args.request_timeout,
+            )
+            out = vlm.parse_and_postprocess_vlm_text(raw, args.role)
+        if (
+            args.role == "cart_back"
+            and not args.no_retry_on_empty
+            and not (out.get("media_serial2") or "").strip()
+            and not (out.get("pcb_serial") or "").strip()
+        ):
+            raw = _run_lm_studio_chat(
+                args.base_url,
+                model_id,
+                path,
+                _CART_BACK_RETRY_PROMPT,
                 max_tokens=args.max_tokens,
                 timeout=args.request_timeout,
             )

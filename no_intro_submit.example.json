@@ -22,7 +22,7 @@
       "python3",
       "/ABS/PATH/TO/Gamecard/scripts/lmstudio_serial_extract.py",
       "--base-url",
-      "http://10.1.1.110:1234/v1",
+      "http://localhost:1234/v1",
       "--model",
       "your-model-id-from-lm-studio",
       "--role",

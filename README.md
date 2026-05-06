@@ -160,11 +160,11 @@ Unknown keys are ignored. Trailing prose is tolerated if the first ``{`` starts 
 - **`vlm_timeout_seconds`** (default **120**) — subprocess timeout **per** VLM invocation (each ROI crop is a separate run).
 - **`vlm_fill_empty_only`** (default **true**) — only fill keys still empty after earlier steps (including prior ROI passes for that role); set **`false`** so each VLM response can overwrite non-empty values for keys it returns.
 
-**Bundled helper — LM Studio (OpenAI-compatible server, e.g. on a LAN GPU):** no PyTorch in the submission venv — only stdlib **`urllib`**. Start the **local server** in LM Studio, then point **`vlm_extract_command`** at **`scripts/lmstudio_serial_extract.py`** with **`--base-url`** (must include the **`/v1`** suffix, e.g. **`http://10.1.1.110:1234/v1`**) and **`--model`** set to the exact id LM Studio shows for the loaded checkpoint. Omit **`--model`** to pick the **first** id from **`GET /v1/models`** when only one model is loaded. Pass **`--role {role}`** so the helper only asks for fields that exist on that scan (**`cart_front`** → **`media_serial1`** only, etc.). Example (replace paths, URL, and model id)::
+**Bundled helper — LM Studio (OpenAI-compatible server, e.g. on a LAN GPU):** no PyTorch in the submission venv — only stdlib **`urllib`**. Start the **local server** in LM Studio, then set **`scan_ocr.vlm_extract_command`** in **`no_intro_submit.json`** (or **`no_intro_submit.example.json`** as a template) so it runs **`scripts/lmstudio_serial_extract.py`**. Pass **`--base-url`** with your LM Studio OpenAI base (must include the **`/v1`** suffix). Typical values are **`http://localhost:1234/v1`** on the same machine, or **`http://<hostname>:<port>/v1`** on your LAN — **put the real URL only in your configuration file**, not in repo sources. Set **`--model`** to the exact id LM Studio shows for the loaded checkpoint, or omit **`--model`** to pick the **first** id from **`GET /v1/models`** when only one model is loaded. Pass **`--role {role}`** so the helper only asks for fields that exist on that scan (**`cart_front`** → **`media_serial1`** only, etc.). Example shape (adjust paths and URL to match your setup)::
 
     "vlm_extract_command": [
       "python3", "/ABS/PATH/TO/Gamecard/scripts/lmstudio_serial_extract.py",
-      "--base-url", "http://10.1.1.110:1234/v1",
+      "--base-url", "http://localhost:1234/v1",
       "--model", "your-model-id-from-lm-studio",
       "--role", "{role}",
       "{image}"
